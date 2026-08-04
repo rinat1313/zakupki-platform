@@ -136,14 +136,35 @@ compose() {
   "${COMPOSE[@]}" "${COMPOSE_FILES[@]}" "$@"
 }
 
+# Архитектура Linux-контейнеров Docker (не хоста macOS!).
+docker_go_arch() {
+  local arch
+  arch="$(docker info --format '{{.Architecture}}' 2>/dev/null || true)"
+  case "$arch" in
+    aarch64|arm64|arm64/v8) echo arm64 ;;
+    x86_64|amd64) echo amd64 ;;
+    *)
+      case "$(uname -m)" in
+        arm64|aarch64) echo arm64 ;;
+        x86_64|amd64) echo amd64 ;;
+        *) echo amd64 ;;
+      esac
+      ;;
+  esac
+}
+
 prep_bins() {
-  echo "→ собираю Go-бинарники…"
+  echo "→ собираю Go-бинарники для Linux-контейнеров…"
   export GOTOOLCHAIN="${GOTOOLCHAIN:-auto}"
+  local goarch
+  goarch="$(docker_go_arch)"
+  echo "OK  GOOS=linux GOARCH=$goarch"
   mkdir -p "$CORE_PATH/bin" "$PARSER_PATH/bin" "$GATEWAY_PATH/bin" "$CUSTOMER_PATH/bin"
-  (cd "$CORE_PATH" && CGO_ENABLED=0 go build -o bin/core ./cmd/core)
-  (cd "$PARSER_PATH" && CGO_ENABLED=0 go build -o bin/parser-service ./cmd/service)
-  (cd "$GATEWAY_PATH" && CGO_ENABLED=0 go build -o bin/gateway ./cmd/gateway)
-  (cd "$CUSTOMER_PATH" && CGO_ENABLED=0 go build -o bin/customer ./cmd/customer)
+  # Важно: на Mac без GOOS=linux получается darwin-бинарник → exec format error в Docker.
+  (cd "$CORE_PATH" && CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -o bin/core ./cmd/core)
+  (cd "$PARSER_PATH" && CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -o bin/parser-service ./cmd/service)
+  (cd "$GATEWAY_PATH" && CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -o bin/gateway ./cmd/gateway)
+  (cd "$CUSTOMER_PATH" && CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -o bin/customer ./cmd/customer)
   # ensure runtime dockerfiles exist
   for pair in \
     "$CORE_PATH:core" \
