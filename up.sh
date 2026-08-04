@@ -202,15 +202,19 @@ else
 fi
 
 echo
-echo "→ жду health…"
+echo "→ жду health (до ~2 мин)…"
 ok=0
 for i in $(seq 1 60); do
   if ./scripts/health.sh >/tmp/zakupki-health.out 2>&1; then
     ok=1
     break
   fi
+  # показываем прогресс, чтобы не казалось что зависло
+  echo "  … попытка $i/60"
+  sed 's/^/     /' /tmp/zakupki-health.out 2>/dev/null || true
   sleep 2
 done
+echo
 cat /tmp/zakupki-health.out || true
 if [[ $ok -ne 1 ]]; then
   echo >&2
