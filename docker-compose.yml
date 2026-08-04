@@ -80,6 +80,7 @@ services:
       DATABASE_URL: postgres://zakupki:zakupki@postgres:5432/zakupki?sslmode=disable
       PARSER_URL: http://parser:8091
       ANALIZATOR_URL: ${ANALIZATOR_URL:-}
+      INGEST_WORKERS: ${INGEST_WORKERS:-3}
     ports:
       - "8080:8080"
     depends_on:
