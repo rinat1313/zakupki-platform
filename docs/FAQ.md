@@ -113,6 +113,23 @@ SYNTH_MAX_TOKENS=900
 
 Если снова `Context size exceeded` — уменьшите `CONTEXT_BUDGET_CHARS` (например `6000`) или увеличьте n_ctx в LM Studio.
 
+## В логах LM Studio только `GET /v1/models`
+
+Это **не анализ**, а health-check (Docker/core раньше дергали `/models` каждые ~10с).
+
+Настоящий анализ = **`POST /v1/chat/completions`** (несколько раз: порции + итог).
+
+Проверка, что чат доходит:
+
+```bash
+curl -X POST http://127.0.0.1:8088/api/v1/lm/smoke
+```
+
+В LM Studio должен появиться `Received request: POST to /v1/chat/completions`.
+Глубокий health: `curl 'http://127.0.0.1:8088/health?lm=1'`
+
+## Пауза / стоп сбора и AI
+
 В UI (блок «Общий прогресс») есть кнопки:
 
 | | Сбор (ingest) | AI-анализ |
