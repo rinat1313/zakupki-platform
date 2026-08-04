@@ -74,6 +74,6 @@ cd zakupki-platform
 
 Остановить: `./up.sh --down`.
 
-По умолчанию используется `network_mode: host` (сервисы на localhost) — так стек надёжно стартует в cloud/nested Docker.
-Отключить: `ZAKUPKI_HOST_NET=0 ./up.sh`.
+По умолчанию — обычный Docker bridge (порты на localhost). Так работает Docker Desktop на Mac/Windows.
+Только на Linux при проблемах с сетью: `ZAKUPKI_HOST_NET=1 ./up.sh`.
 

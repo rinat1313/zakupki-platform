@@ -117,23 +117,19 @@ if [[ $FROM_SOURCE -eq 0 ]]; then
   COMPOSE_FILES+=(-f docker-compose.runtime.yml)
 fi
 
-# Auto-fallback: if Docker bridge cannot pass traffic between containers, use host networking.
-USE_HOST_NET="${USE_HOST_NET:-auto}"
-if [[ "$USE_HOST_NET" == "auto" ]]; then
-  if ! docker run --rm --network bridge alpine:3.20 wget -qO- https://1.1.1.1 >/dev/null 2>&1; then
-    : # ignore outbound test failures
-  fi
-  # Prefer host net in this launcher when ZAKUPKI_HOST_NET=1 or bridge probe fails later.
-  if [[ "${ZAKUPKI_HOST_NET:-}" == "1" ]]; then
-    USE_HOST_NET=1
-  else
-    USE_HOST_NET=0
-  fi
+# Docker Desktop (macOS/Windows): обычный bridge + published ports.
+# Host networking включайте только на Linux при проблемах с bridge: ZAKUPKI_HOST_NET=1
+if [[ -z "${ZAKUPKI_HOST_NET:-}" ]]; then
+  case "$(uname -s)" in
+    Darwin|MINGW*|MSYS*|CYGWIN*) ZAKUPKI_HOST_NET=0 ;;
+    *) ZAKUPKI_HOST_NET=0 ;;
+  esac
 fi
-# Default ON for reliability unless explicitly disabled.
-if [[ "${ZAKUPKI_HOST_NET:-1}" != "0" ]]; then
+if [[ "${ZAKUPKI_HOST_NET}" == "1" ]]; then
   COMPOSE_FILES+=(-f docker-compose.host.yml)
-  echo "OK  network_mode=host (сервисы на localhost)"
+  echo "OK  network_mode=host (Linux fallback)"
+else
+  echo "OK  network_mode=bridge (порты на localhost)"
 fi
 
 compose() {
@@ -199,7 +195,11 @@ up_args=(up -d)
 
 echo
 echo "→ поднимаю контейнеры ($MODE)…"
-compose "${profiles[@]}" "${up_args[@]}"
+if [[ ${#profiles[@]} -gt 0 ]]; then
+  compose "${profiles[@]}" "${up_args[@]}"
+else
+  compose "${up_args[@]}"
+fi
 
 echo
 echo "→ жду health…"
