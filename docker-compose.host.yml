@@ -1,0 +1,39 @@
+# Fallback для окружений без рабочего Docker bridge (cloud/nested).
+# Все сервисы слушают localhost на хосте.
+services:
+  postgres:
+    network_mode: host
+    # host mode ignores ports: — Postgres всё равно слушает 5432
+  parser:
+    network_mode: host
+    environment:
+      HTTP_ADDR: ":8091"
+  core:
+    network_mode: host
+    environment:
+      HTTP_ADDR: ":8080"
+      DATABASE_URL: postgres://zakupki:zakupki@127.0.0.1:5432/zakupki?sslmode=disable
+      PARSER_URL: http://127.0.0.1:8091
+      ANALIZATOR_URL: ${ANALIZATOR_URL:-}
+    depends_on:
+      postgres:
+        condition: service_started
+  customer:
+    network_mode: host
+    environment:
+      HTTP_ADDR: ":8092"
+  gateway:
+    network_mode: host
+    environment:
+      HTTP_ADDR: ":3000"
+      CORE_URL: http://127.0.0.1:8080
+      CUSTOMER_URL: http://127.0.0.1:8092
+      UI_DIR: /app/ui
+    depends_on:
+      - core
+      - customer
+  analizator:
+    network_mode: host
+    environment:
+      HTTP_ADDR: ":8088"
+      LM_STUDIO_BASE_URL: ${LM_STUDIO_BASE_URL:-http://127.0.0.1:1234/v1}
