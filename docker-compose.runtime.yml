@@ -17,3 +17,7 @@ services:
     build:
       context: ${GATEWAY_PATH:-../zakupki-gateway}
       dockerfile: Dockerfile.runtime
+  analizator:
+    build:
+      context: ${ANALIZATOR_PATH:-../analizator_zakupok}
+      dockerfile: Dockerfile.runtime

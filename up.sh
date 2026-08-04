@@ -165,6 +165,14 @@ prep_bins() {
   (cd "$PARSER_PATH" && CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -o bin/parser-service ./cmd/service)
   (cd "$GATEWAY_PATH" && CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -o bin/gateway ./cmd/gateway)
   (cd "$CUSTOMER_PATH" && CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -o bin/customer ./cmd/customer)
+  if [[ -n "${ANALIZATOR_PATH:-}" && -d "$ANALIZATOR_PATH" ]]; then
+    mkdir -p "$ANALIZATOR_PATH/bin"
+    (cd "$ANALIZATOR_PATH" && CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -o bin/analizator ./cmd/analizator)
+    if [[ ! -f "$ANALIZATOR_PATH/Dockerfile.runtime" ]]; then
+      echo "ERROR: нет Dockerfile.runtime в $ANALIZATOR_PATH" >&2
+      exit 1
+    fi
+  fi
   # ensure runtime dockerfiles exist
   for pair in \
     "$CORE_PATH:core" \
@@ -216,6 +224,8 @@ up_args=(up -d)
 
 echo
 echo "→ поднимаю контейнеры ($MODE)…"
+# Без Progress=tty на Mac иногда кажется, что зависло на "up 2/3" (особенно build analizator).
+export BUILDKIT_PROGRESS="${BUILDKIT_PROGRESS:-plain}"
 if [[ ${#profiles[@]} -gt 0 ]]; then
   compose "${profiles[@]}" "${up_args[@]}"
 else
