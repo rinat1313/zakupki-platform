@@ -128,6 +128,19 @@ curl -X POST http://127.0.0.1:8088/api/v1/lm/smoke
 В LM Studio должен появиться `Received request: POST to /v1/chat/completions`.
 Глубокий health: `curl 'http://127.0.0.1:8088/health?lm=1'`
 
+## Откуда берётся текст для AI
+
+Платформа **не** читает `valid_info/` с диска analizator.
+
+Цепочка:
+
+1. UI → `POST /api/v1/tenders/{id}/analyze` (**zakupki-core**)
+2. core из **PostgreSQL**: карточка тендера + `documents.text_content`
+3. `BuildCorpus(...)` → поле `text` в запросе к analizator
+4. analizator режет `text` на порции и шлёт в LM Studio
+
+Файлы `valid_info/valid_doc` — только legacy для CLI; при наличии `text` их отсутствие **не ошибка**.
+
 ## Пауза / стоп сбора и AI
 
 В UI (блок «Общий прогресс») есть кнопки:
