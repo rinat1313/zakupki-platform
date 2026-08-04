@@ -113,6 +113,18 @@ SYNTH_MAX_TOKENS=900
 
 Если снова `Context size exceeded` — уменьшите `CONTEXT_BUDGET_CHARS` (например `6000`) или увеличьте n_ctx в LM Studio.
 
+## AI вернул unknown / пустые заметки при наличии документов
+
+Документы **подаются** (из PostgreSQL). Частая причина с **Qwen3**: модель тратит весь `max_tokens` на thinking (`reasoning_content`), а `content` пустой — анализатор видит «пустые» порции.
+
+Исправлено в analizator (чтение `reasoning_content`, `/no_think`, больше `DOSE_MAX_TOKENS`).
+Дополнительно в LM Studio: Developer → отключите thinking / «separate reasoning_content», либо увеличьте max tokens.
+
+```bash
+DOSE_MAX_TOKENS=1600
+SYNTH_MAX_TOKENS=2000
+```
+
 ## В логах LM Studio только `GET /v1/models`
 
 Это **не анализ**, а health-check (Docker/core раньше дергали `/models` каждые ~10с).
