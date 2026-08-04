@@ -160,32 +160,34 @@ curl -X POST http://127.0.0.1:8088/api/v1/lm/smoke
 | | Сбор (ingest) | AI-анализ |
 |---|---|---|
 | **Пауза / Продолжить / Стоп** | управляют очередью сбора | — |
-| **Переключатель «Авто»** | — | вкл/выкл автоматический AI |
+| **Переключатель «Авто»** | — | вкл/выкл автоматический AI (по умолчанию выкл, если AI не настроен — недоступен) |
+| **Чек-лист** | — | системный / пользовательский промпт и правила **по категории** |
+| **Выпадающий список** | — | активная конфигурация; при включённом Авто список заблокирован |
 
-Авто-AI берёт только карточки, где **все документы уже собраны и есть текст**. Ручной AI по карточке (кнопка «AI» / «AI: самозанятый») работает независимо от переключателя. Выключение «Авто» отменяет текущий авто-запрос.
+Авто-AI стартует, когда **парсер закончил карточку** (`ingest ok`) и есть хотя бы один документ с текстом — **не ждёт** обработки всех файлов.
 
-Параллельный сбор: `INGEST_WORKERS` (по умолчанию `3`) — несколько воркеров с `FOR UPDATE SKIP LOCKED`, без пересечения по одной позиции.
+Параллельный сбор: число активных воркеров = `max(1, очередь/10)` (до 32), `FOR UPDATE SKIP LOCKED`.
+
+Шкалы на карточке: зелёная — сбор (растёт по документам), синяя — AI (по порциям LM Studio). Недогруженные карточки — светло-оранжевые.
 
 API:
 
 ```bash
 curl http://127.0.0.1:8080/api/v1/workers
-# {"ingest":"running","auto_ai":false,"analyze_active":false}
+# {"ingest":"running","auto_ai":false,"analyze_active":false,"analizator_configured":true}
 
 curl -X PUT http://127.0.0.1:8080/api/v1/workers/auto-ai \
   -H 'Content-Type: application/json' \
   -d '{"enabled":true}'
 
-curl -X POST http://127.0.0.1:8080/api/v1/workers/ingest/pause
-curl -X POST http://127.0.0.1:8080/api/v1/workers/ingest/resume
-curl -X POST http://127.0.0.1:8080/api/v1/workers/ingest/stop
-# отменить текущий AI-запрос (ручной или авто):
-curl -X POST http://127.0.0.1:8080/api/v1/workers/analyze/stop
+# конфиги AI категории
+curl http://127.0.0.1:8080/api/v1/categories/MYKEY/ai-configs
+curl -X POST http://127.0.0.1:8080/api/v1/categories/MYKEY/ai-configs \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"самозанятый","system_prompt":"...","user_prompt":"...","rules":"...","activate":true}'
 ```
 
 Новая загрузка CSV / refresh автоматически снимает stop/pause со сбора.
-
-На карточке две шкалы: зелёная — сбор документов, синяя — AI; рядом ✓ / ✕ по итогу каждой.
 
 ## LM Studio: Docker всё ещё не достучится (Mac)
 
