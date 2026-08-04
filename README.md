@@ -1,33 +1,27 @@
 # zakupki-platform
 
-Точка запуска **всей платформы** закупок: docker-compose, миграции PostgreSQL, контракты API/событий, health.
+Точка запуска **всей платформы** закупок.
 
-Не содержит бизнес-логики парсинга/анализа — только оркестрация.
+## Запуск (один скрипт)
 
-## Быстрый старт
-
-```bash
-# 1) sibling-репозитории рядом
-make clone-siblings
-
-# 2) поднять стек
-make up
-
-# 3) проверить
-make health
-```
-
-- UI: http://localhost:3000  
-- Core API: http://localhost:8080/api/v1/health  
-- Parser: http://localhost:8091/health  
-- Customer: http://localhost:8092/health  
-
-AI (LM Studio на хосте):
+Положите sibling-репозитории рядом (или `make clone-siblings`), затем:
 
 ```bash
-export LM_STUDIO_MODEL=<id>
-make up-ai
+./up.sh
 ```
+
+Это соберёт образы и поднимет все контейнеры. Вам не нужно знать, как стартовать каждый сервис.
+
+```bash
+./up.sh --ai      # + AI-анализ (LM Studio на хосте :1234)
+./up.sh --down    # остановить
+./up.sh --logs    # логи
+./up.sh --health  # проверка
+```
+
+- UI: http://localhost:3000
+- Core: http://localhost:8080/api/v1/health
+
 
 ## Документы
 

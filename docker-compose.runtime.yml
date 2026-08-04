@@ -1,0 +1,19 @@
+# Override: собирать лёгкие runtime-образы из уже собранных Go-бинарников (bin/).
+# Используется скриптом ./up.sh автоматически.
+services:
+  parser:
+    build:
+      context: ${PARSER_PATH:-../zakupki-parser}
+      dockerfile: Dockerfile.runtime
+  core:
+    build:
+      context: ${CORE_PATH:-../zakupki-core}
+      dockerfile: Dockerfile.runtime
+  customer:
+    build:
+      context: ${CUSTOMER_PATH:-../zakupki-customer}
+      dockerfile: Dockerfile.runtime
+  gateway:
+    build:
+      context: ${GATEWAY_PATH:-../zakupki-gateway}
+      dockerfile: Dockerfile.runtime

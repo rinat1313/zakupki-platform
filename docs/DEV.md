@@ -57,3 +57,23 @@ make health
 export LM_STUDIO_MODEL=<id>
 make up-ai
 ```
+
+## Запуск одной командой
+
+```bash
+cd zakupki-platform
+./up.sh
+```
+
+Скрипт сам:
+1. находит sibling-репозитории,
+2. собирает Go-бинарники,
+3. собирает Docker-образы,
+4. поднимает все контейнеры,
+5. проверяет health.
+
+Остановить: `./up.sh --down`.
+
+По умолчанию используется `network_mode: host` (сервисы на localhost) — так стек надёжно стартует в cloud/nested Docker.
+Отключить: `ZAKUPKI_HOST_NET=0 ./up.sh`.
+

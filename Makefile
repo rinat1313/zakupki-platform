@@ -1,24 +1,22 @@
 .PHONY: up up-ai up-full down logs health clone-siblings
 
-COMPOSE ?= docker compose
-
 up:
-	$(COMPOSE) up -d --build postgres parser core customer gateway
+	./up.sh
 
 up-ai:
-	$(COMPOSE) --profile ai up -d --build
+	./up.sh --ai
 
 up-full:
-	$(COMPOSE) --profile ai --profile redis --profile kafka up -d --build
+	./up.sh --full
 
 down:
-	$(COMPOSE) --profile ai --profile redis --profile kafka down
+	./up.sh --down
 
 logs:
-	$(COMPOSE) logs -f --tail=200
+	./up.sh --logs
 
 health:
-	@./scripts/health.sh
+	./up.sh --health
 
 clone-siblings:
 	@./scripts/clone-siblings.sh
