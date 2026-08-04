@@ -19,10 +19,13 @@ git pull origin main
 
 AI-сервис по умолчанию **не** поднимается. Нужно:
 
-1. Установить [LM Studio](https://lmstudio.ai), загрузить модель, Start Server на порту **1234**.
+1. Установить [LM Studio](https://lmstudio.ai), загрузить модель, Start Server на порту **1234**
+   (в логе: `HTTP server listening on port 1234`, OpenAI-compatible `/v1/chat/completions`).
 2. Запустить стек с AI:
 
 ```bash
+export LM_STUDIO_BASE_URL=http://host.docker.internal:1234/v1
+export LM_STUDIO_API_KEY=lm-studio
 export LM_STUDIO_MODEL=<id-модели-из-LM-Studio>
 ./up.sh --down
 ./up.sh --ai
@@ -31,10 +34,34 @@ export LM_STUDIO_MODEL=<id-модели-из-LM-Studio>
 Проверка:
 
 ```bash
+curl http://127.0.0.1:1234/v1/models
 curl http://127.0.0.1:8088/health
 curl http://127.0.0.1:8080/api/v1/health   # analizator: ok
 ```
 
+## Пауза / стоп сбора и AI
+
+В UI (блок «Общий прогресс») есть кнопки:
+
+| | Сбор (ingest) | AI-анализ |
+|---|---|---|
+| **Пауза** | не берёт новые позиции из очереди | новые AI-запросы отклоняются |
+| **Продолжить** | снова обрабатывает очередь | снова принимает AI-запросы |
+| **Стоп** | отменяет очередь (`cancelled`) | отменяет текущий AI-запрос и ставит паузу |
+
+API:
+
+```bash
+curl http://127.0.0.1:8080/api/v1/workers
+curl -X POST http://127.0.0.1:8080/api/v1/workers/ingest/pause
+curl -X POST http://127.0.0.1:8080/api/v1/workers/ingest/resume
+curl -X POST http://127.0.0.1:8080/api/v1/workers/ingest/stop
+curl -X POST http://127.0.0.1:8080/api/v1/workers/analyze/pause
+curl -X POST http://127.0.0.1:8080/api/v1/workers/analyze/resume
+curl -X POST http://127.0.0.1:8080/api/v1/workers/analyze/stop
+```
+
+Новая загрузка CSV / refresh автоматически снимает stop/pause со сбора.
 ## LM Studio: `connection refused` / `dial tcp ...:55674`
 
 На Mac LM Studio часто слушает только `127.0.0.1`, а контейнер `analizator` ходит через `host.docker.internal` — соединение отклоняется.
