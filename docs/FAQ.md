@@ -153,6 +153,20 @@ curl -X POST http://127.0.0.1:8088/api/v1/lm/smoke
 
 Файлы `valid_info/valid_doc` — только legacy для CLI; при наличии `text` их отсутствие **не ошибка**.
 
+## Неполный текст DOCX в карточке
+
+В UI раньше превью обрезалось на **6000 символов** — это выглядело как «6 страниц из 40». Теперь показывается весь `text_content`.
+
+Для извлечения DOCX парсер использует **native ZIP/XML** (все `w:t` из document/header/footer) + LibreOffice, выбирает более полный вариант. DOC/RTF: конвертация в DOCX → native extract. После обновления парсера нажмите **«Обновить карточку»**.
+
+## Несколько LM Studio
+
+Файл `analizator_zakupok/configs/lm_studio.yaml` — список `base_url` моделей. Анализатор проверяет доступность и параллелит запросы. Core ставит `analyze_capacity = min(healthy, CPU−10%)`.
+
+```bash
+curl http://127.0.0.1:8088/api/v1/lm/pool
+```
+
 ## Сбор, авто-AI и статусы
 
 В UI (блок «Общий прогресс»):

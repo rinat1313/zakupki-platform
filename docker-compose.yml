@@ -129,6 +129,7 @@ services:
       LM_STUDIO_BASE_URL: ${LM_STUDIO_BASE_URL:-http://host.docker.internal:1234/v1}
       LM_STUDIO_API_KEY: ${LM_STUDIO_API_KEY:-lm-studio}
       LM_STUDIO_MODEL: ${LM_STUDIO_MODEL:-local-model}
+      LM_STUDIO_ENDPOINTS_FILE: ${LM_STUDIO_ENDPOINTS_FILE:-/app/configs/lm_studio.yaml}
     ports:
       - "8088:8088"
     extra_hosts:
