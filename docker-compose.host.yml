@@ -15,6 +15,7 @@ services:
       DATABASE_URL: postgres://zakupki:zakupki@127.0.0.1:5432/zakupki?sslmode=disable
       PARSER_URL: http://127.0.0.1:8091
       ANALIZATOR_URL: ${ANALIZATOR_URL:-}
+      INGEST_WORKERS: ${INGEST_WORKERS:-3}
     depends_on:
       postgres:
         condition: service_started
