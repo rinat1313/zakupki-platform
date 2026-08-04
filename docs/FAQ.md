@@ -159,23 +159,40 @@ curl -X POST http://127.0.0.1:8088/api/v1/lm/smoke
 
 Для извлечения DOCX парсер использует **native ZIP/XML** (все `w:t` из document/header/footer) + LibreOffice, выбирает более полный вариант. DOC/RTF: конвертация в DOCX → native extract. После обновления парсера нажмите **«Обновить карточку»**.
 
-## Несколько LM Studio (пул из 4)
+## Несколько LM Studio (пул)
 
-При `./up.sh --ai` один скрипт `scripts/lm-studio-start-pool.sh`:
-1. читает IP/порты из `configs/lm_studio_pool.conf` (по умолчанию `127.0.0.1:1234–1237`);
-2. стартует LM Studio server, грузит **`qwen/qwen3-8b`** с **context 8192** и **`--parallel N`**;
-3. отключает thinking в `model.yaml` (если есть) — в API analizator уже шлёт `enable_thinking:false` и `/no_think`;
-4. пишет `analizator_zakupok/configs/lm_studio.yaml` (`host.docker.internal` для Docker).
+При `./up.sh --ai` скрипт `scripts/lm-studio-start-pool.sh`:
+1. читает IP/порты из `configs/lm_studio_pool.conf` (по умолчанию один `:1234`);
+2. стартует LM Studio, грузит **`qwen/qwen3-8b`** (context **8192**, `--parallel N`);
+3. отключает thinking; пишет `analizator_zakupok/configs/lm_studio.yaml`;
+4. yaml смонтирован в контейнер — после правки достаточно `force-recreate` analizator.
 
-Правьте IP в `lm_studio_pool.conf` под свои машины (4 хоста = 4 порта). Одна установка LM Studio обычно слушает **один** порт — тогда скрипт оставит один endpoint с `concurrent: 4`.
+### `healthy:0` / `connection refused` / порты `49xxx`
 
-Пропуск автостарта: `ZAKUPKI_SKIP_LM_POOL=1 ./up.sh --ai`.
+В ответе `/api/v1/lm/pool` не должно быть:
+- **`127.0.0.1`** из Docker (это loopback контейнера) → нужен **`host.docker.internal`**;
+- портов **`49928` / `55674` / любой эфемерный** → в LM Studio Server поставьте **фиксированный 1234**.
+
+На Mac:
 
 ```bash
-curl http://127.0.0.1:8088/api/v1/lm/pool
+# 1) LM Studio → Developer/Server → Port 1234 → Start
+#    модель qwen/qwen3-8b загружена
+curl -s http://127.0.0.1:1234/v1/models | head
+
+# 2) обновить ветки и переподнять AI
+cd zakupki-platform
+git fetch && git checkout cursor/lm-studio-pool-start-7460 && git pull
+(cd ../analizator_zakupok && git fetch && git checkout cursor/lm-studio-pool-start-7460 && git pull)
+./up.sh --down
+./up.sh --ai
+
+curl -s http://127.0.0.1:8088/api/v1/lm/pool
 ```
 
-Анализатор параллелит по живым слотам. Core: `analyze_capacity = min(healthy, CPU−10%)`.
+Ожидается `healthy >= 1`, `base_url` вида `http://host.docker.internal:1234/v1`.
+
+Пропуск автостарта пула: `ZAKUPKI_SKIP_LM_POOL=1 ./up.sh --ai`.
 
 ## Сбор, авто-AI и статусы
 

@@ -99,6 +99,7 @@ PY
 write_yaml_all() {
   local out="$1"
   mkdir -p "$(dirname "$out")"
+  local n="${#NAMES[@]}"
   {
     echo "# Автогенерация: scripts/lm-studio-start-pool.sh"
     echo "# Источник: $CONF"
@@ -106,18 +107,30 @@ write_yaml_all() {
     echo "# IP/порты: configs/lm_studio_pool.conf → ./up.sh --ai"
     echo
     echo "endpoints:"
-    local i=0
-    while [[ $i -lt ${#NAMES[@]} ]]; do
+    if [[ "$n" -eq 1 ]]; then
       local dh
-      dh="$(docker_host_for "${HOSTS[$i]}")"
+      dh="$(docker_host_for "${HOSTS[0]}")"
       cat <<EOF
+  - base_url: http://${dh}:${PORTS[0]}/v1
+    api_key: ${API_KEY}
+    model: ${MODEL}
+    name: ${NAMES[0]}
+    concurrent: ${PARALLEL:-4}
+EOF
+    else
+      local i=0
+      while [[ $i -lt ${#NAMES[@]} ]]; do
+        local dh
+        dh="$(docker_host_for "${HOSTS[$i]}")"
+        cat <<EOF
   - base_url: http://${dh}:${PORTS[$i]}/v1
     api_key: ${API_KEY}
     model: ${MODEL}
     name: ${NAMES[$i]}
 EOF
-      i=$((i + 1))
-    done
+        i=$((i + 1))
+      done
+    fi
     echo
     echo "health_interval_sec: 15"
     echo "context_length: ${CONTEXT_LEN}"
@@ -194,6 +207,11 @@ if [[ ${#NAMES[@]} -eq 0 ]]; then
 fi
 
 log "→ LM Studio pool: ${#NAMES[@]} endpoint(ов), model=$MODEL context=$CONTEXT_LEN"
+
+if [[ -z "$PARALLEL" ]]; then
+  PARALLEL="${LM_STUDIO_PARALLEL_DEFAULT:-4}"
+fi
+
 write_yaml_all "$OUT_YAML"
 
 LMS=""
@@ -225,14 +243,6 @@ while [[ $i -lt ${#NAMES[@]} ]]; do
   fi
   i=$((i + 1))
 done
-
-if [[ -z "$PARALLEL" ]]; then
-  if [[ ${#LOCAL_PORTS[@]} -gt 0 ]]; then
-    PARALLEL="${#LOCAL_PORTS[@]}"
-  else
-    PARALLEL=4
-  fi
-fi
 
 PRIMARY_PORT=""
 if [[ ${#LOCAL_PORTS[@]} -gt 0 ]]; then
