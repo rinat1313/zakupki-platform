@@ -1,0 +1,39 @@
+# Целевые Kafka-топики (профиль kafka / Redpanda).
+# На MVP обмен идёт по HTTP; топики — контракт расширения.
+
+topics:
+  - name: tender.fetch.requested
+    partitions: 3
+    producers: [zakupki-core]
+    consumers: [zakupki-parser]
+    payload: { reg_number: string, source_site: string, job_item_id: uuid }
+
+  - name: tender.fetch.completed
+    partitions: 3
+    producers: [zakupki-parser]
+    consumers: [zakupki-core]
+    payload: { reg_number: string, source_used: string, failed: bool, result: object }
+
+  - name: tender.analyze.requested
+    partitions: 3
+    producers: [zakupki-core, zakupki-gateway]
+    consumers: [analizator_zakupok | zakupki-core bridge]
+    payload: { tender_id: uuid, checklist_id: string }
+
+  - name: tender.analyze.completed
+    partitions: 3
+    producers: [analizator bridge]
+    consumers: [zakupki-core]
+    payload: { tender_id: uuid, recommendation: string, score: number, details: object }
+
+  - name: customer.enrich.requested
+    partitions: 3
+    producers: [zakupki-core]
+    consumers: [zakupki-customer]
+    payload: { customer_id: uuid, inn: string }
+
+  - name: ingest.jobs
+    partitions: 1
+    producers: [zakupki-gateway, zakupki-core]
+    consumers: [zakupki-core]
+    payload: { job_id: uuid, category_slug: string }
