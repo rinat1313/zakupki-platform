@@ -120,6 +120,11 @@ services:
       CHECKLISTS_DIR: /app/configs/checklists
       PROMPTS_DIR: /app/configs/prompts
       DEFAULT_CHECKLIST: ${DEFAULT_CHECKLIST:-default}
+      PAGE_CHARS: ${PAGE_CHARS:-1800}
+      DOSE_PAGES: ${DOSE_PAGES:-5}
+      CONTEXT_BUDGET_CHARS: ${CONTEXT_BUDGET_CHARS:-10000}
+      DOSE_MAX_TOKENS: ${DOSE_MAX_TOKENS:-400}
+      SYNTH_MAX_TOKENS: ${SYNTH_MAX_TOKENS:-900}
       LM_STUDIO_BASE_URL: ${LM_STUDIO_BASE_URL:-http://host.docker.internal:1234/v1}
       LM_STUDIO_API_KEY: ${LM_STUDIO_API_KEY:-lm-studio}
       LM_STUDIO_MODEL: ${LM_STUDIO_MODEL:-local-model}
