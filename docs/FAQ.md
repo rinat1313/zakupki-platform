@@ -18,8 +18,19 @@ git pull origin main
 ## AI-анализ: `analizator disabled` / `connection refused` / порт 55674
 
 **Важно:** Docker берёт порт из файла `zakupki-platform/.env`, а не из «воздуха».
-Если в ошибке фигурирует `:55674` — в `.env` (или в старом контейнере) застрял старый порт.
-LM Studio сейчас слушает **1234** — исправьте `.env` и пересоздайте контейнеры.
+Если в ошибке фигурирует `:55674` — в `.env` **или в терминале** (`export LM_STUDIO_…`) застрял старый порт.
+Docker Compose приоритетнее берёт переменные из **shell**, чем из `.env` — поэтому старый `export …:55674` ломал всё даже при правильном `.env`.
+
+`./up.sh --ai` теперь:
+- читает `.env` и **перезаписывает** shell;
+- принудительно чинит порт `55674` → `1234`;
+- делает `force-recreate` контейнера `analizator`.
+
+LM Studio сейчас слушает **1234** — исправьте `.env` и пересоздайте контейнеры. Перед запуском можно сбросить старый export:
+
+```bash
+unset LM_STUDIO_BASE_URL LM_STUDIO_API_KEY LM_STUDIO_MODEL
+```
 
 ### 1. LM Studio на Mac
 
@@ -48,10 +59,14 @@ zakupki-platform/.env
 ```bash
 LM_STUDIO_BASE_URL=http://host.docker.internal:1234/v1
 LM_STUDIO_API_KEY=lm-studio
-LM_STUDIO_MODEL=Qwen3-8B-Q8_0
+LM_STUDIO_MODEL=qwen/qwen3-8b
 ```
 
-Не оставляйте `55674` и другие старые порты.
+Не оставляйте `55674` и другие старые порты. После правки:
+
+```bash
+unset LM_STUDIO_BASE_URL LM_STUDIO_API_KEY LM_STUDIO_MODEL
+```
 
 ### 3. Перезапуск стека с AI
 
