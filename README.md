@@ -16,7 +16,7 @@
 Это соберёт образы и поднимет все контейнеры. Вам не нужно знать, как стартовать каждый сервис.
 
 ```bash
-./up.sh --ai      # + AI-анализ (LM Studio на хосте :1234)
+./up.sh --ai      # + AI: LM Studio pool (qwen3-8b ×4) + analizator
 ./up.sh --down    # остановить
 ./up.sh --logs    # логи
 ./up.sh --health  # проверка

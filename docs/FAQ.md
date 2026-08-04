@@ -159,13 +159,23 @@ curl -X POST http://127.0.0.1:8088/api/v1/lm/smoke
 
 Для извлечения DOCX парсер использует **native ZIP/XML** (все `w:t` из document/header/footer) + LibreOffice, выбирает более полный вариант. DOC/RTF: конвертация в DOCX → native extract. После обновления парсера нажмите **«Обновить карточку»**.
 
-## Несколько LM Studio
+## Несколько LM Studio (пул из 4)
 
-Файл `analizator_zakupok/configs/lm_studio.yaml` — список `base_url` моделей. Анализатор проверяет доступность и параллелит запросы. Core ставит `analyze_capacity = min(healthy, CPU−10%)`.
+При `./up.sh --ai` один скрипт `scripts/lm-studio-start-pool.sh`:
+1. читает IP/порты из `configs/lm_studio_pool.conf` (по умолчанию `127.0.0.1:1234–1237`);
+2. стартует LM Studio server, грузит **`qwen/qwen3-8b`** с **context 8192** и **`--parallel N`**;
+3. отключает thinking в `model.yaml` (если есть) — в API analizator уже шлёт `enable_thinking:false` и `/no_think`;
+4. пишет `analizator_zakupok/configs/lm_studio.yaml` (`host.docker.internal` для Docker).
+
+Правьте IP в `lm_studio_pool.conf` под свои машины (4 хоста = 4 порта). Одна установка LM Studio обычно слушает **один** порт — тогда скрипт оставит один endpoint с `concurrent: 4`.
+
+Пропуск автостарта: `ZAKUPKI_SKIP_LM_POOL=1 ./up.sh --ai`.
 
 ```bash
 curl http://127.0.0.1:8088/api/v1/lm/pool
 ```
+
+Анализатор параллелит по живым слотам. Core: `analyze_capacity = min(healthy, CPU−10%)`.
 
 ## Сбор, авто-AI и статусы
 
