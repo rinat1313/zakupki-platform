@@ -30,7 +30,7 @@ usage() {
 
 Usage:
   ./up.sh              поднять весь стек (собрать Go → образы → контейнеры)
-  ./up.sh --ai         + analizator (LM Studio на хосте :1234)
+  ./up.sh --ai         + analizator + LM Studio pool (1×:1234×4 слота или N хостов)
   ./up.sh --full       + redis + kafka + ai
   ./up.sh --down       остановить всё
   ./up.sh --logs       логи
@@ -266,6 +266,19 @@ if [[ "$MODE" == "ai" || "$MODE" == "full" ]]; then
   # Compose: переменные из shell ПЕРЕБИВАЮТ .env — из‑за старого
   # `export LM_STUDIO_BASE_URL=...:55674` контейнер продолжал ходить не туда.
   ensure_lm_studio_env
+
+  # Пул LM: список серверов только в analizator configs/lm_studio.yaml (не затираем).
+  if [[ "${ZAKUPKI_SKIP_LM_POOL:-0}" != "1" ]]; then
+    echo "→ LM Studio pool из yaml (analizator_zakupok/configs/lm_studio.yaml)…"
+    ANALIZATOR_PATH="$ANALIZATOR_PATH" \
+      LM_STUDIO_MODEL="${LM_STUDIO_MODEL:-qwen/qwen3-8b}" \
+      LM_STUDIO_API_KEY="${LM_STUDIO_API_KEY:-lm-studio}" \
+      bash "$ROOT/scripts/lm-studio-start-pool.sh" || {
+        echo "WARN: lm-studio-start-pool.sh завершился с ошибкой — контейнеры всё равно подниму" >&2
+      }
+  else
+    echo "OK  skip LM pool (ZAKUPKI_SKIP_LM_POOL=1)"
+  fi
 fi
 
 profiles=()
