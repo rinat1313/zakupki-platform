@@ -43,7 +43,16 @@ is_local_host() {
 
 probe_models() {
   local host="$1" port="$2"
-  curl -fsS --connect-timeout 2 --max-time 5 "http://${host}:${port}/v1/models" >/dev/null 2>&1
+  curl -fsS --connect-timeout 3 --max-time 10 "http://${host}:${port}/v1/models" >/dev/null 2>&1
+}
+
+probe_models_verbose() {
+  local host="$1" port="$2"
+  local out code
+  out="$(curl -sS --connect-timeout 3 --max-time 10 -w '\n%{http_code}' "http://${host}:${port}/v1/models" 2>&1)" || true
+  code="$(printf '%s' "$out" | tail -1)"
+  log "  curl http://${host}:${port}/v1/models → HTTP ${code}"
+  printf '%s' "$out" | head -c 200; echo
 }
 
 probe_tcp() {
@@ -131,10 +140,10 @@ for line in "${EPS[@]}"; do
     log "OK  $name http://${probe_host}:${port}/v1/models"
     ok=$((ok + 1))
   else
+    warn "$name: нет /v1/models на http://${probe_host}:${port}"
+    probe_models_verbose "$probe_host" "$port" || true
     if probe_tcp "$probe_host" "$port"; then
-      warn "$name: TCP :${port} открыт, но /v1/models не отвечает (Server Start? модель? firewall?)"
-    else
-      warn "$name: нет ответа http://${probe_host}:${port}/v1/models"
+      warn "  TCP :${port} открыт — проверьте Server Start / bind 0.0.0.0 / firewall"
     fi
   fi
 done
