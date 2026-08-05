@@ -30,7 +30,7 @@ usage() {
 
 Usage:
   ./up.sh              поднять весь стек (собрать Go → образы → контейнеры)
-  ./up.sh --ai         + analizator + старт пула LM Studio (4 endpoint'а)
+  ./up.sh --ai         + analizator + LM Studio pool (1×:1234×4 слота или N хостов)
   ./up.sh --full       + redis + kafka + ai
   ./up.sh --down       остановить всё
   ./up.sh --logs       логи

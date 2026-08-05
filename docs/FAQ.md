@@ -161,38 +161,52 @@ curl -X POST http://127.0.0.1:8088/api/v1/lm/smoke
 
 ## Несколько LM Studio (пул)
 
-При `./up.sh --ai` скрипт `scripts/lm-studio-start-pool.sh`:
-1. читает IP/порты из `configs/lm_studio_pool.conf` (по умолчанию один `:1234`);
-2. стартует LM Studio, грузит **`qwen/qwen3-8b`** (context **8192**, `--parallel N`);
-3. отключает thinking; пишет `analizator_zakupok/configs/lm_studio.yaml`;
-4. yaml смонтирован в контейнер — после правки достаточно `force-recreate` analizator.
+**Важно:** одна установка LM Studio на Mac = **один** HTTP-сервер. Четыре отдельных сервера на одном Mac через `lms` **нельзя**.
+
+Что делает `./up.sh --ai` (`scripts/lm-studio-start-pool.sh`):
+1. читает `configs/lm_studio_pool.conf` (`name host port`);
+2. на локальном хосте: `lms server start` + `lms load qwen/qwen3-8b --context-length 8192 --parallel 4`;
+3. пишет `analizator_zakupok/configs/lm_studio.yaml` с `concurrent: 4` (4 слота AI);
+4. yaml смонтирован в контейнер.
+
+Многопоточность AI: core берёт `max_parallel` из `/api/v1/lm/pool` и параллелит анализы **разных** карточек (пока есть свободные слоты и связь).
+
+### Один Mac
+
+```conf
+# configs/lm_studio_pool.conf
+lm-1 127.0.0.1 1234
+```
+
+### Четыре настоящих сервера = четыре машины
+
+```conf
+lm-1 192.168.1.10 1234
+lm-2 192.168.1.20 1234
+lm-3 192.168.1.21 1234
+lm-4 192.168.1.22 1234
+```
+
+На каждой: LM Studio Server :1234, модель загружена. Тогда в pool будет `healthy: 4`.
 
 ### `healthy:0` / `connection refused` / порты `49xxx`
 
-В ответе `/api/v1/lm/pool` не должно быть:
-- **`127.0.0.1`** из Docker (это loopback контейнера) → нужен **`host.docker.internal`**;
-- портов **`49928` / `55674` / любой эфемерный** → в LM Studio Server поставьте **фиксированный 1234**.
-
-На Mac:
+В `/api/v1/lm/pool` не должно быть:
+- **`127.0.0.1`** из Docker → нужен **`host.docker.internal`**;
+- портов **`49xxx` / `55674`** → фиксируйте Server **1234**.
 
 ```bash
-# 1) LM Studio → Developer/Server → Port 1234 → Start
-#    модель qwen/qwen3-8b загружена
+# LM Studio → Port 1234 → Start, модель qwen/qwen3-8b
 curl -s http://127.0.0.1:1234/v1/models | head
 
-# 2) обновить ветки и переподнять AI
-cd zakupki-platform
-git fetch && git checkout cursor/lm-studio-pool-start-7460 && git pull
-(cd ../analizator_zakupok && git fetch && git checkout cursor/lm-studio-pool-start-7460 && git pull)
-./up.sh --down
-./up.sh --ai
-
+cd zakupki-platform && git pull   # ветка с пулом
+(cd ../analizator_zakupok && git pull)
+./up.sh --down && ./up.sh --ai
 curl -s http://127.0.0.1:8088/api/v1/lm/pool
+# ожидается healthy>=1, concurrent/max_parallel до 4
 ```
 
-Ожидается `healthy >= 1`, `base_url` вида `http://host.docker.internal:1234/v1`.
-
-Пропуск автостарта пула: `ZAKUPKI_SKIP_LM_POOL=1 ./up.sh --ai`.
+Пропуск автостарта: `ZAKUPKI_SKIP_LM_POOL=1 ./up.sh --ai`.
 
 ## Сбор, авто-AI и статусы
 
