@@ -169,7 +169,15 @@ curl -X POST http://127.0.0.1:8088/api/v1/lm/smoke
 3. пишет `analizator_zakupok/configs/lm_studio.yaml` с `concurrent: 4` (4 слота AI);
 4. yaml смонтирован в контейнер.
 
-Многопоточность AI: core берёт `max_parallel` из `/api/v1/lm/pool` и параллелит анализы **разных** карточек (пока есть свободные слоты и связь).
+Многопоточность AI: core держит до **`ANALYZE_MAX_PARALLEL` (по умолчанию 4)** одновременных анализов карточек.
+Ёмкость синхронизируется с `max_parallel` пула LM (`concurrent: 4` / живые слоты). Analizator **не** режет параллелизм по CPU контейнера.
+
+Проверка:
+```bash
+curl -s http://127.0.0.1:8088/api/v1/lm/pool   # max_parallel: 4
+curl -s http://127.0.0.1:8080/api/v1/workers    # analyze_capacity: 4
+```
+В логах core: `auto-ai: start … (slot 1/4)` … до 4 штук сразу.
 
 ### Один Mac
 
