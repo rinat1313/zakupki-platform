@@ -130,12 +130,15 @@ services:
       LM_STUDIO_API_KEY: ${LM_STUDIO_API_KEY:-lm-studio}
       LM_STUDIO_MODEL: ${LM_STUDIO_MODEL:-local-model}
       LM_STUDIO_ENDPOINTS_FILE: ${LM_STUDIO_ENDPOINTS_FILE:-/app/configs/lm_studio.yaml}
+      ZAKUPKI_IN_DOCKER: "1"
     ports:
       - "8088:8088"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - analizator_data:/data/tenders
+      # Живой yaml с хоста — без пересборки образа после правки пула
+      - ${ANALIZATOR_PATH:-../analizator_zakupok}/configs/lm_studio.yaml:/app/configs/lm_studio.yaml:ro
 
 volumes:
   pgdata:
