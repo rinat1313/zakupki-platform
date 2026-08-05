@@ -30,7 +30,7 @@ usage() {
 
 Usage:
   ./up.sh              поднять весь стек (собрать Go → образы → контейнеры)
-  ./up.sh --ai         + analizator (LM Studio на хосте :1234)
+  ./up.sh --ai         + analizator + LM Studio pool (1×:1234×4 слота или N хостов)
   ./up.sh --full       + redis + kafka + ai
   ./up.sh --down       остановить всё
   ./up.sh --logs       логи
@@ -152,7 +152,7 @@ ensure_lm_studio_env() {
   if [[ -n "$env_url" ]]; then
     export LM_STUDIO_BASE_URL="$env_url"
   fi
-  export LM_STUDIO_BASE_URL="${LM_STUDIO_BASE_URL:-http://host.docker.internal:1234/v1}"
+  export LM_STUDIO_BASE_URL="${LM_STUDIO_BASE_URL:-http://192.168.1.124:1234/v1}"
 
   if [[ -n "$env_key" ]]; then
     export LM_STUDIO_API_KEY="$env_key"
@@ -164,15 +164,16 @@ ensure_lm_studio_env() {
   fi
   export LM_STUDIO_MODEL="${LM_STUDIO_MODEL:-qwen/qwen3-8b}"
 
-  # Жёстко чиним застрявший порт 55674 (и любые не-1234, если ZAKUPKI_LM_FORCE_1234=1)
+  # Чиним только застрявший порт 55674. Не форсим host.docker.internal —
+  # основной сервер может быть LAN (192.168.1.124:1234).
   if [[ "$LM_STUDIO_BASE_URL" == *":55674"* ]]; then
-    echo "WARN: LM_STUDIO_BASE_URL содержит старый порт 55674 → принудительно :1234" >&2
-    export LM_STUDIO_BASE_URL="http://host.docker.internal:1234/v1"
+    echo "WARN: LM_STUDIO_BASE_URL содержит старый порт 55674 → 192.168.1.124:1234" >&2
+    export LM_STUDIO_BASE_URL="http://192.168.1.124:1234/v1"
   fi
-  if [[ "${ZAKUPKI_LM_FORCE_1234:-1}" == "1" ]] && [[ "$LM_STUDIO_BASE_URL" != *":1234"* ]]; then
-    echo "WARN: LM_STUDIO_BASE_URL=$LM_STUDIO_BASE_URL не на :1234 → принудительно host.docker.internal:1234" >&2
-    echo "      (отключить автофикс: ZAKUPKI_LM_FORCE_1234=0)" >&2
-    export LM_STUDIO_BASE_URL="http://host.docker.internal:1234/v1"
+  # Опционально: ZAKUPKI_LM_FORCE_1234=1 только чинит НЕ-:1234 URL на LAN primary
+  if [[ "${ZAKUPKI_LM_FORCE_1234:-0}" == "1" ]] && [[ "$LM_STUDIO_BASE_URL" != *":1234"* ]]; then
+    echo "WARN: LM_STUDIO_BASE_URL=$LM_STUDIO_BASE_URL не на :1234 → 192.168.1.124:1234" >&2
+    export LM_STUDIO_BASE_URL="http://192.168.1.124:1234/v1"
   fi
 
   # Синхронизируем .env, чтобы следующий запуск и UI-доки совпадали
@@ -266,6 +267,42 @@ if [[ "$MODE" == "ai" || "$MODE" == "full" ]]; then
   # Compose: переменные из shell ПЕРЕБИВАЮТ .env — из‑за старого
   # `export LM_STUDIO_BASE_URL=...:55674` контейнер продолжал ходить не туда.
   ensure_lm_studio_env
+
+  # Выравниваем LM_STUDIO_BASE_URL с первым endpoint из yaml (источник правды).
+  YAML_LM="$ANALIZATOR_PATH/configs/lm_studio.yaml"
+  if [[ -f "$YAML_LM" ]]; then
+    first_url="$(python3 - "$YAML_LM" <<'PY'
+import re, sys
+from pathlib import Path
+t = Path(sys.argv[1]).read_text(encoding="utf-8")
+m = re.search(r"base_url:\s*(\S+)", t)
+print(m.group(1).strip().rstrip("/") if m else "")
+PY
+)"
+    if [[ -n "$first_url" ]]; then
+      export LM_STUDIO_BASE_URL="$first_url"
+      if [[ -f .env ]]; then
+        tmp="$(mktemp)"
+        grep -v -E '^[[:space:]]*LM_STUDIO_BASE_URL=' .env >"$tmp" || true
+        echo "LM_STUDIO_BASE_URL=$LM_STUDIO_BASE_URL" >>"$tmp"
+        mv "$tmp" .env
+      fi
+      echo "OK  LM_STUDIO_BASE_URL ← yaml primary: $LM_STUDIO_BASE_URL"
+    fi
+  fi
+
+  # Пул LM: список серверов только в analizator configs/lm_studio.yaml (не затираем).
+  if [[ "${ZAKUPKI_SKIP_LM_POOL:-0}" != "1" ]]; then
+    echo "→ LM Studio pool из yaml (analizator_zakupok/configs/lm_studio.yaml)…"
+    ANALIZATOR_PATH="$ANALIZATOR_PATH" \
+      LM_STUDIO_MODEL="${LM_STUDIO_MODEL:-qwen/qwen3-8b}" \
+      LM_STUDIO_API_KEY="${LM_STUDIO_API_KEY:-lm-studio}" \
+      bash "$ROOT/scripts/lm-studio-start-pool.sh" || {
+        echo "WARN: lm-studio-start-pool.sh завершился с ошибкой — контейнеры всё равно подниму" >&2
+      }
+  else
+    echo "OK  skip LM pool (ZAKUPKI_SKIP_LM_POOL=1)"
+  fi
 fi
 
 profiles=()
