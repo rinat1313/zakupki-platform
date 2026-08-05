@@ -163,11 +163,13 @@ curl -X POST http://127.0.0.1:8088/api/v1/lm/smoke
 
 **Важно:** одна установка LM Studio на Mac = **один** HTTP-сервер. Четыре отдельных сервера на одном Mac через `lms` **нельзя**.
 
-Что делает `./up.sh --ai` (`scripts/lm-studio-start-pool.sh`):
-1. читает `configs/lm_studio_pool.conf` (`name host port`);
-2. на локальном хосте: `lms server start` + `lms load qwen/qwen3-8b --context-length 8192 --parallel 4`;
-3. пишет `analizator_zakupok/configs/lm_studio.yaml` с `concurrent: 4` (4 слота AI);
-4. yaml смонтирован в контейнер.
+**Источник списка серверов:** только `analizator_zakupok/configs/lm_studio.yaml`.
+`./up.sh --ai` его **не перезаписывает**. Env `LM_STUDIO_BASE_URL` не добавляет лишний endpoint, если yaml уже заполнен.
+
+Что делает `scripts/lm-studio-start-pool.sh`:
+1. читает endpoints из yaml;
+2. стартует локальный LMS при необходимости;
+3. проверяет удалённые (`/v1/models`); yaml смонтирован в контейнер.
 
 Многопоточность AI: core держит до **`ANALYZE_MAX_PARALLEL` (по умолчанию 4)** одновременных анализов карточек.
 Ёмкость синхронизируется с `max_parallel` пула LM (`concurrent: 4` / живые слоты). Analizator **не** режет параллелизм по CPU контейнера.

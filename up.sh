@@ -267,10 +267,9 @@ if [[ "$MODE" == "ai" || "$MODE" == "full" ]]; then
   # `export LM_STUDIO_BASE_URL=...:55674` контейнер продолжал ходить не туда.
   ensure_lm_studio_env
 
-  # Один скрипт: поднять LM Studio (qwen/qwen3-8b, 8192, thinking off)
-  # по configs/lm_studio_pool.conf и записать analizator configs/lm_studio.yaml.
+  # Пул LM: список серверов только в analizator configs/lm_studio.yaml (не затираем).
   if [[ "${ZAKUPKI_SKIP_LM_POOL:-0}" != "1" ]]; then
-    echo "→ LM Studio pool (configs/lm_studio_pool.conf)…"
+    echo "→ LM Studio pool из yaml (analizator_zakupok/configs/lm_studio.yaml)…"
     ANALIZATOR_PATH="$ANALIZATOR_PATH" \
       LM_STUDIO_MODEL="${LM_STUDIO_MODEL:-qwen/qwen3-8b}" \
       LM_STUDIO_API_KEY="${LM_STUDIO_API_KEY:-lm-studio}" \
