@@ -148,7 +148,14 @@ import re, sys
 from pathlib import Path
 t = Path(sys.argv[1]).read_text(encoding="utf-8")
 local = {"127.0.0.1", "localhost", "0.0.0.0", "::1", "host.docker.internal"}
-for m in re.finditer(r"base_url:\s*https?://([^:/]+)", t):
+# только реальные ключи yaml, не комментарии
+for line in t.splitlines():
+    s = line.strip()
+    if not s or s.startswith("#"):
+        continue
+    m = re.match(r"-\s*base_url:\s*https?://([^:/]+)", s)
+    if not m:
+        continue
     host = m.group(1).strip().lower()
     if host not in local:
         sys.exit(0)
@@ -316,11 +323,20 @@ if [[ "$MODE" == "ai" || "$MODE" == "full" ]]; then
 import re, sys
 from pathlib import Path
 t = Path(sys.argv[1]).read_text(encoding="utf-8")
-m = re.search(r"base_url:\s*(\S+)", t)
-print(m.group(1).strip().rstrip("/") if m else "")
+url = ""
+for line in t.splitlines():
+    s = line.strip()
+    if not s or s.startswith("#"):
+        continue
+    m = re.match(r"-\s*base_url:\s*(https?://\S+)", s)
+    if m:
+        url = m.group(1).strip().rstrip("/")
+        break
+print(url)
 PY
 )"
-    if [[ -n "$first_url" ]]; then
+    # отбросить мусор вроде "#" из старых парсеров / .env
+    if [[ -n "$first_url" && "$first_url" == http* ]]; then
       export LM_STUDIO_BASE_URL="$first_url"
       if [[ -f .env ]]; then
         tmp="$(mktemp)"

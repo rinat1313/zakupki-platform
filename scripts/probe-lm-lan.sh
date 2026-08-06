@@ -20,8 +20,13 @@ done < <(python3 - "$YAML" <<'PY'
 import re, sys
 from pathlib import Path
 t = Path(sys.argv[1]).read_text(encoding="utf-8")
-for m in re.finditer(r"base_url:\s*(\S+)", t):
-    print(m.group(1).rstrip("/"))
+for line in t.splitlines():
+    s = line.strip()
+    if not s or s.startswith("#"):
+        continue
+    m = re.match(r"-\s*base_url:\s*(https?://\S+)", s)
+    if m:
+        print(m.group(1).rstrip("/"))
 PY
 )
 

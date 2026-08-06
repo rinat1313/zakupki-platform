@@ -98,10 +98,16 @@ python3 - "$YAML" <<'PY'
 import re, subprocess, sys
 from pathlib import Path
 text = Path(sys.argv[1]).read_text(encoding="utf-8")
-urls = re.findall(r"base_url:\s*(\S+)", text)
+urls = []
+for line in text.splitlines():
+    s = line.strip()
+    if not s or s.startswith("#"):
+        continue
+    m = re.match(r"-\s*base_url:\s*(https?://\S+)", s)
+    if m:
+        urls.append(m.group(1).rstrip("/"))
 ok = 0
 for u in urls:
-    u = u.rstrip("/")
     host = u.replace("http://", "").replace("https://", "").split("/")[0]
     # host.docker.internal с Mac-хоста часто не резолвится — пробуем 127.0.0.1
     candidates = [u]
