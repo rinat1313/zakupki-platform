@@ -183,7 +183,7 @@ ensure_lm_studio_env() {
   if [[ -n "$env_url" ]]; then
     export LM_STUDIO_BASE_URL="$env_url"
   fi
-  export LM_STUDIO_BASE_URL="${LM_STUDIO_BASE_URL:-http://192.168.1.124:1234/v1}"
+  export LM_STUDIO_BASE_URL="${LM_STUDIO_BASE_URL:-http://10.2.12.130:1234/v1}"
 
   if [[ -n "$env_key" ]]; then
     export LM_STUDIO_API_KEY="$env_key"
@@ -196,15 +196,15 @@ ensure_lm_studio_env() {
   export LM_STUDIO_MODEL="${LM_STUDIO_MODEL:-qwen/qwen3-8b}"
 
   # Чиним только застрявший порт 55674. Не форсим host.docker.internal —
-  # основной сервер может быть LAN (192.168.1.124:1234).
+  # основной сервер может быть LAN (10.2.12.130:1234).
   if [[ "$LM_STUDIO_BASE_URL" == *":55674"* ]]; then
-    echo "WARN: LM_STUDIO_BASE_URL содержит старый порт 55674 → 192.168.1.124:1234" >&2
-    export LM_STUDIO_BASE_URL="http://192.168.1.124:1234/v1"
+    echo "WARN: LM_STUDIO_BASE_URL содержит старый порт 55674 → 10.2.12.130:1234" >&2
+    export LM_STUDIO_BASE_URL="http://10.2.12.130:1234/v1"
   fi
   # Опционально: ZAKUPKI_LM_FORCE_1234=1 только чинит НЕ-:1234 URL на LAN primary
   if [[ "${ZAKUPKI_LM_FORCE_1234:-0}" == "1" ]] && [[ "$LM_STUDIO_BASE_URL" != *":1234"* ]]; then
-    echo "WARN: LM_STUDIO_BASE_URL=$LM_STUDIO_BASE_URL не на :1234 → 192.168.1.124:1234" >&2
-    export LM_STUDIO_BASE_URL="http://192.168.1.124:1234/v1"
+    echo "WARN: LM_STUDIO_BASE_URL=$LM_STUDIO_BASE_URL не на :1234 → 10.2.12.130:1234" >&2
+    export LM_STUDIO_BASE_URL="http://10.2.12.130:1234/v1"
   fi
 
   # Синхронизируем .env, чтобы следующий запуск и UI-доки совпадали
