@@ -136,6 +136,37 @@ compose() {
   "${COMPOSE[@]}" "${COMPOSE_FILES[@]}" "$@"
 }
 
+# YAML содержит LAN/внешний IP LM Studio (не loopback / host.docker.internal)?
+yaml_has_lan_lm() {
+  local yaml="${1:-}"
+  [[ -f "$yaml" ]] || return 1
+  python3 - "$yaml" <<'PY'
+import re, sys
+from pathlib import Path
+t = Path(sys.argv[1]).read_text(encoding="utf-8")
+local = {"127.0.0.1", "localhost", "0.0.0.0", "::1", "host.docker.internal"}
+for m in re.finditer(r"base_url:\s*https?://([^:/]+)", t):
+    host = m.group(1).strip().lower()
+    if host not in local:
+        sys.exit(0)
+sys.exit(1)
+PY
+}
+
+# Включить host-сеть для analizator (доступ к LM Studio в LAN).
+enable_analizator_lan_net() {
+  local joined=" ${COMPOSE_FILES[*]} "
+  if [[ "$joined" == *"docker-compose.analizator-lan.yml"* ]]; then
+    return 0
+  fi
+  COMPOSE_FILES+=(-f docker-compose.analizator-lan.yml)
+  # core в bridge → analizator на host :8088
+  export ANALIZATOR_URL="${ANALIZATOR_URL:-http://host.docker.internal:8088}"
+  echo "OK  analizator network_mode=host (LAN LM Studio)"
+  echo "    Docker Desktop Mac: Settings → Resources → Network → Enable host networking"
+  echo "    ANALIZATOR_URL=$ANALIZATOR_URL"
+}
+
 # Docker Compose: значения из текущего shell перекрывают файл .env.
 # Старый `export LM_STUDIO_BASE_URL=...:55674` как раз давал connection refused
 # при работающем LM Studio на :1234.
@@ -250,7 +281,12 @@ prep_bins() {
 
 case "$MODE" in
   down)
-    "${COMPOSE[@]}" -f docker-compose.yml --profile ai --profile redis --profile kafka down
+    # те же override'ы, что могли использоваться при --ai (LAN host-net)
+    down_files=(-f docker-compose.yml)
+    [[ -f docker-compose.runtime.yml ]] && down_files+=(-f docker-compose.runtime.yml)
+    [[ -f docker-compose.analizator-lan.yml ]] && down_files+=(-f docker-compose.analizator-lan.yml)
+    [[ -f docker-compose.host.yml ]] && down_files+=(-f docker-compose.host.yml)
+    "${COMPOSE[@]}" "${down_files[@]}" --profile ai --profile redis --profile kafka down
     echo "stopped"
     exit 0
     ;;
@@ -290,6 +326,24 @@ PY
       echo "OK  LM_STUDIO_BASE_URL ← yaml primary: $LM_STUDIO_BASE_URL"
     fi
   fi
+
+  # LAN LM Studio → analizator на host-сети (иначе Docker bridge часто не видит 192.168.x).
+  # Принудительно: ZAKUPKI_ANALIZATOR_LAN=1  | отключить: =0
+  case "${ZAKUPKI_ANALIZATOR_LAN:-auto}" in
+    1|true|TRUE|yes|YES)
+      enable_analizator_lan_net
+      ;;
+    0|false|FALSE|no|NO)
+      echo "OK  skip analizator host-net (ZAKUPKI_ANALIZATOR_LAN=0)"
+      ;;
+    *)
+      if yaml_has_lan_lm "$YAML_LM"; then
+        enable_analizator_lan_net
+      else
+        echo "OK  только local LM в yaml — analizator в bridge"
+      fi
+      ;;
+  esac
 
   # Пул LM: список серверов только в analizator configs/lm_studio.yaml (не затираем).
   if [[ "${ZAKUPKI_SKIP_LM_POOL:-0}" != "1" ]]; then
@@ -363,6 +417,11 @@ echo "  Parser:   http://localhost:8091/health"
 echo "  Customer: http://localhost:8092/health"
 if [[ "$MODE" == "ai" || "$MODE" == "full" ]]; then
   echo "  Analizator: http://localhost:8088/health"
+  echo "  LM pool:    curl -s http://127.0.0.1:8088/api/v1/lm/pool"
+  if [[ -x "$ROOT/scripts/probe-lm-lan.sh" ]]; then
+    echo "→ проверка LAN LM Studio…"
+    bash "$ROOT/scripts/probe-lm-lan.sh" || true
+  fi
 fi
 echo
 echo "Остановить: ./up.sh --down"

@@ -166,10 +166,29 @@ curl -X POST http://127.0.0.1:8088/api/v1/lm/smoke
 **Источник списка серверов:** только `analizator_zakupok/configs/lm_studio.yaml`.
 `./up.sh --ai` его **не перезаписывает**. Env `LM_STUDIO_BASE_URL` не добавляет лишний endpoint, если yaml уже заполнен.
 
+### LM Studio на другой машине (LAN) + Docker
+
+Если в yaml есть IP вроде `192.168.1.124`, `./up.sh --ai` автоматически подключает
+`docker-compose.analizator-lan.yml`: **analizator** идёт в `network_mode: host`
+(тот же сетевой стек, что `curl` на Mac) и видит чужие LM Studio.
+
+На **Docker Desktop (Mac)** включите:
+**Settings → Resources → Network → Enable host networking**.
+
+Проверка:
+```bash
+./scripts/probe-lm-lan.sh
+curl -s http://127.0.0.1:8088/api/v1/lm/pool
+# у lm-124 должно быть healthy: true
+```
+
+Отключить host-net: `ZAKUPKI_ANALIZATOR_LAN=0 ./up.sh --ai`.
+Принудительно: `ZAKUPKI_ANALIZATOR_LAN=1 ./up.sh --ai`.
+
 Что делает `scripts/lm-studio-start-pool.sh`:
 1. читает endpoints из yaml;
 2. стартует локальный LMS при необходимости;
-3. проверяет удалённые (`/v1/models`); yaml смонтирован в контейнер.
+3. проверяет удалённые (`/v1/models`).
 
 Многопоточность AI: core держит до **`ANALYZE_MAX_PARALLEL` (по умолчанию 4)** одновременных анализов карточек.
 Ёмкость синхронизируется с `max_parallel` пула LM (`concurrent: 4` / живые слоты). Analizator **не** режет параллелизм по CPU контейнера.
