@@ -196,18 +196,21 @@ curl -X POST http://127.0.0.1:8088/api/v1/lm/smoke
 
 ### LM Studio на другой машине (LAN) + Docker
 
-Если в yaml есть LAN IP (`10.2.12.x`, `192.168.x`, `172.25.x`), `./up.sh --ai` автоматически подключает
-`docker-compose.analizator-lan.yml`: **analizator** идёт в `network_mode: host`
-(тот же сетевой стек, что `curl` на Mac) и видит чужие LM Studio.
+На **Linux** при LAN IP в yaml `./up.sh --ai` включает `network_mode=host` для analizator.
 
-На **Docker Desktop (Mac)** включите:
-**Settings → Resources → Network → Enable host networking**.
+На **Mac (Docker Desktop)** по умолчанию **bridge** (host-net часто ломает `:8088` на localhost).
+LAN LMS на IP самого Mac (`10.2.12.111`) из bridge обычно доступен.
+Принудительно host-net: `ZAKUPKI_ANALIZATOR_LAN=1` + Settings → Enable host networking.
+Отключить: `ZAKUPKI_ANALIZATOR_LAN=0`.
+
+Если в yaml есть LAN IP (`10.2.12.x`, `192.168.x`, `172.25.x`), `./up.sh --ai` на Linux
+подключает `docker-compose.analizator-lan.yml`.
 
 Проверка:
 ```bash
 ./scripts/probe-lm-lan.sh
 curl -s http://127.0.0.1:8088/api/v1/lm/pool
-# у lm-mac-111 / lm-win-172 должно быть healthy: true
+# у lm-mac-111 / lm-local должно быть healthy: true
 ```
 
 Отключить host-net: `ZAKUPKI_ANALIZATOR_LAN=0 ./up.sh --ai`.
