@@ -57,8 +57,15 @@ probe_models_verbose() {
 
 probe_tcp() {
   local host="$1" port="$2"
-  # /dev/tcp may work where curl hangs
-  timeout 3 bash -c "echo >/dev/tcp/${host}/${port}" 2>/dev/null
+  # macOS часто без GNU timeout — пробуем /dev/tcp с фоновым kill
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 3 bash -c "echo >/dev/tcp/${host}/${port}" 2>/dev/null
+    return $?
+  fi
+  ( bash -c "echo >/dev/tcp/${host}/${port}" ) 2>/dev/null &
+  local pid=$!
+  ( sleep 3; kill "$pid" 2>/dev/null ) &
+  wait "$pid" 2>/dev/null
 }
 
 if [[ ! -f "$YAML" ]]; then
@@ -68,8 +75,12 @@ fi
 
 log "→ LM pool из yaml (только он): $YAML"
 
-# Parse endpoints: name|host|port|model|concurrent
-mapfile -t EPS < <(python3 - "$YAML" <<'PY'
+# Parse endpoints: name|host|port|model|concurrent (без mapfile — macOS bash 3.2)
+EPS=()
+while IFS= read -r line || [[ -n "${line:-}" ]]; do
+  [[ -z "${line:-}" ]] && continue
+  EPS+=("$line")
+done < <(python3 - "$YAML" <<'PY'
 import re, sys
 from pathlib import Path
 text = Path(sys.argv[1]).read_text(encoding="utf-8")

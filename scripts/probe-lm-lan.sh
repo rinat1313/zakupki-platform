@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Проверка: хост и (если запущен) контейнер analizator видят LM Studio из yaml.
+# Проверка: хост видит LM Studio из yaml (совместимо с bash 3.2 / macOS).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PARENT="$(cd "$ROOT/.." && pwd)"
@@ -12,7 +12,11 @@ if [[ ! -f "$YAML" ]]; then
 fi
 
 echo "→ yaml: $YAML"
-mapfile -t URLS < <(python3 - "$YAML" <<'PY'
+URLS=()
+while IFS= read -r line || [[ -n "${line:-}" ]]; do
+  [[ -z "${line:-}" ]] && continue
+  URLS+=("$line")
+done < <(python3 - "$YAML" <<'PY'
 import re, sys
 from pathlib import Path
 t = Path(sys.argv[1]).read_text(encoding="utf-8")
@@ -21,11 +25,18 @@ for m in re.finditer(r"base_url:\s*(\S+)", t):
 PY
 )
 
+if [[ ${#URLS[@]} -eq 0 ]]; then
+  echo "в $YAML нет base_url" >&2
+  exit 1
+fi
+
 fail=0
 for u in "${URLS[@]}"; do
   echo
   echo "=== HOST curl $u/models ==="
-  if curl -fsS --connect-timeout 3 --max-time 10 "$u/models" | head -c 240; then
+  body="$(curl -fsS --connect-timeout 3 --max-time 10 "$u/models" 2>/dev/null || true)"
+  if [[ -n "$body" ]]; then
+    printf '%s' "$body" | head -c 240 || true
     echo
     echo "OK host → $u"
   else
