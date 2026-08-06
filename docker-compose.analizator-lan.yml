@@ -1,0 +1,24 @@
+# Analizator на сети хоста — тот же стек, что curl на Mac/Linux.
+# Нужен, чтобы достать LM Studio на другой машине (192.168.x.x).
+#
+# Docker Desktop (Mac):
+#   Settings → Resources → Network → Enable host networking
+#   (без этого network_mode: host на Mac не работает как на Linux)
+#
+# Core в bridge ходит к analizator через host.docker.internal:8088.
+
+services:
+  analizator:
+    network_mode: host
+    environment:
+      HTTP_ADDR: ":8088"
+      # Мы в host-сети: 127.0.0.1 = хост, LAN IP доступны напрямую
+      ZAKUPKI_IN_DOCKER: "0"
+      LM_STUDIO_REWRITE_LOCALHOST: "0"
+    # ports: из base игнорируются при host mode — слушаем :8088 на хосте
+
+  core:
+    environment:
+      ANALIZATOR_URL: ${ANALIZATOR_URL:-http://host.docker.internal:8088}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
