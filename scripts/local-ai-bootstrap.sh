@@ -78,10 +78,18 @@ if [[ "$SKIP_GIT" != "1" ]]; then
         echo "  stash $name → $stash_msg"
       fi
       git checkout -B "$BRANCH" "origin/$BRANCH"
-      echo "  OK  $name → $BRANCH"
+      echo "  OK  $name → $BRANCH @ $(git rev-parse --short HEAD)"
     )
   done
 fi
+
+# Жёсткая проверка: UI-правки должны быть на диске до сборки образа.
+if ! grep -q "ai-coverage-pct" "$GATEWAY_PATH/ui/index.html" 2>/dev/null; then
+  echo "ERROR: $GATEWAY_PATH не на ветке с новым UI (нет ai-coverage-pct)." >&2
+  echo "  cd $GATEWAY_PATH && git fetch && git checkout -B $BRANCH origin/$BRANCH" >&2
+  exit 3
+fi
+echo "OK  gateway UI marker ai-coverage-pct @ $(git -C "$GATEWAY_PATH" rev-parse --short HEAD)"
 
 YAML="$ANALIZATOR_PATH/configs/lm_studio.yaml"
 if [[ ! -f "$YAML" ]]; then
