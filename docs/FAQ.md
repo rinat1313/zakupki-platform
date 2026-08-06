@@ -159,13 +159,83 @@ curl -X POST http://127.0.0.1:8088/api/v1/lm/smoke
 
 Для извлечения DOCX парсер использует **native ZIP/XML** (все `w:t` из document/header/footer) + LibreOffice, выбирает более полный вариант. DOC/RTF: конвертация в DOCX → native extract. После обновления парсера нажмите **«Обновить карточку»**.
 
-## Несколько LM Studio
+## Несколько LM Studio (пул)
 
-Файл `analizator_zakupok/configs/lm_studio.yaml` — список `base_url` моделей. Анализатор проверяет доступность и параллелит запросы. Core ставит `analyze_capacity = min(healthy, CPU−10%)`.
+**Важно:** одна установка LM Studio на Mac = **один** HTTP-сервер. Четыре отдельных сервера на одном Mac через `lms` **нельзя**.
+
+**Источник списка серверов:** только `analizator_zakupok/configs/lm_studio.yaml`.
+`./up.sh --ai` его **не перезаписывает**. Env `LM_STUDIO_BASE_URL` не добавляет лишний endpoint, если yaml уже заполнен.
+
+### LM Studio на другой машине (LAN) + Docker
+
+Если в yaml есть IP вроде `192.168.1.124`, `./up.sh --ai` автоматически подключает
+`docker-compose.analizator-lan.yml`: **analizator** идёт в `network_mode: host`
+(тот же сетевой стек, что `curl` на Mac) и видит чужие LM Studio.
+
+На **Docker Desktop (Mac)** включите:
+**Settings → Resources → Network → Enable host networking**.
+
+Проверка:
+```bash
+./scripts/probe-lm-lan.sh
+curl -s http://127.0.0.1:8088/api/v1/lm/pool
+# у lm-124 должно быть healthy: true
+```
+
+Отключить host-net: `ZAKUPKI_ANALIZATOR_LAN=0 ./up.sh --ai`.
+Принудительно: `ZAKUPKI_ANALIZATOR_LAN=1 ./up.sh --ai`.
+
+Что делает `scripts/lm-studio-start-pool.sh`:
+1. читает endpoints из yaml;
+2. стартует локальный LMS при необходимости;
+3. проверяет удалённые (`/v1/models`).
+
+Многопоточность AI: core держит до **`ANALYZE_MAX_PARALLEL` (по умолчанию 4)** одновременных анализов карточек.
+Ёмкость синхронизируется с `max_parallel` пула LM (`concurrent: 4` / живые слоты). Analizator **не** режет параллелизм по CPU контейнера.
+
+Проверка:
+```bash
+curl -s http://127.0.0.1:8088/api/v1/lm/pool   # max_parallel: 4
+curl -s http://127.0.0.1:8080/api/v1/workers    # analyze_capacity: 4
+```
+В логах core: `auto-ai: start … (slot 1/4)` … до 4 штук сразу.
+
+### Один Mac
+
+```conf
+# configs/lm_studio_pool.conf
+lm-1 127.0.0.1 1234
+```
+
+### Четыре настоящих сервера = четыре машины
+
+```conf
+lm-1 192.168.1.10 1234
+lm-2 192.168.1.20 1234
+lm-3 192.168.1.21 1234
+lm-4 192.168.1.22 1234
+```
+
+На каждой: LM Studio Server :1234, модель загружена. Тогда в pool будет `healthy: 4`.
+
+### `healthy:0` / `connection refused` / порты `49xxx`
+
+В `/api/v1/lm/pool` не должно быть:
+- **`127.0.0.1`** из Docker → нужен **`host.docker.internal`**;
+- портов **`49xxx` / `55674`** → фиксируйте Server **1234**.
 
 ```bash
-curl http://127.0.0.1:8088/api/v1/lm/pool
+# LM Studio → Port 1234 → Start, модель qwen/qwen3-8b
+curl -s http://127.0.0.1:1234/v1/models | head
+
+cd zakupki-platform && git pull   # ветка с пулом
+(cd ../analizator_zakupok && git pull)
+./up.sh --down && ./up.sh --ai
+curl -s http://127.0.0.1:8088/api/v1/lm/pool
+# ожидается healthy>=1, concurrent/max_parallel до 4
 ```
+
+Пропуск автостарта: `ZAKUPKI_SKIP_LM_POOL=1 ./up.sh --ai`.
 
 ## Сбор, авто-AI и статусы
 
