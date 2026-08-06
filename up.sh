@@ -192,8 +192,11 @@ ensure_lm_studio_env() {
   fi
 
   # Предпочитаем .env, затем уже export из shell, затем дефолт :1234
-  if [[ -n "$env_url" ]]; then
+  # Отбрасываем мусор вроде "#" (битый парсер комментариев yaml).
+  if [[ -n "$env_url" && "$env_url" == http*://* ]]; then
     export LM_STUDIO_BASE_URL="$env_url"
+  elif [[ -n "${LM_STUDIO_BASE_URL:-}" && "$LM_STUDIO_BASE_URL" != http*://* ]]; then
+    unset LM_STUDIO_BASE_URL
   fi
   export LM_STUDIO_BASE_URL="${LM_STUDIO_BASE_URL:-http://10.2.12.111:1234/v1}"
 
@@ -211,6 +214,10 @@ ensure_lm_studio_env() {
   # основной сервер может быть LAN (10.2.12.111:1234).
   if [[ "$LM_STUDIO_BASE_URL" == *":55674"* ]]; then
     echo "WARN: LM_STUDIO_BASE_URL содержит старый порт 55674 → 10.2.12.111:1234" >&2
+    export LM_STUDIO_BASE_URL="http://10.2.12.111:1234/v1"
+  fi
+  if [[ "$LM_STUDIO_BASE_URL" != http*://* ]]; then
+    echo "WARN: LM_STUDIO_BASE_URL='$LM_STUDIO_BASE_URL' невалиден → 10.2.12.111:1234" >&2
     export LM_STUDIO_BASE_URL="http://10.2.12.111:1234/v1"
   fi
   # Опционально: ZAKUPKI_LM_FORCE_1234=1 только чинит НЕ-:1234 URL на LAN primary
