@@ -127,17 +127,33 @@ SYNTH_MAX_TOKENS=2000
 
 ## В логах LM Studio только `GET /v1/models`
 
-Это **не анализ**, а health-check (Docker/core раньше дергали `/models` каждые ~10с).
+Это **не «непонятный запрос к модели»**, а health-check пула: analizator периодически
+делает `GET /v1/models`, чтобы пометить endpoint `healthy`. Ответ — JSON со списком
+моделей (`qwen/qwen3-8b`, …). Сама LLM при этом **не вызывается**.
 
 Настоящий анализ = **`POST /v1/chat/completions`** (несколько раз: порции + итог).
 
-Проверка, что чат доходит:
+Если чата нет совсем:
+1. в yaml указан **чужой IP** (раньше был `10.2.12.130`, а LMS слушает `10.2.12.111`);
+2. **`model:`** в yaml не совпадает с `id` из `/v1/models` (на Windows часто
+   загружен `qwen/qwen3-vl-4b`, а в yaml стоял `qwen/qwen3-8b`);
+3. Auto-AI выключен / нет готовых карточек — тогда идут только health-пинги;
+4. smoke/analyze не доходят до analizator (`ANALIZATOR_URL`).
+
+Проверка:
 
 ```bash
+# IP и model id с машины, где крутится LMS
+curl -s http://10.2.12.111:1234/v1/models | head
+curl -s http://172.25.16.1:1234/v1/models | head
+
+# пул видит живые серверы
+curl -s http://127.0.0.1:8088/api/v1/lm/pool
+
+# принудительный чат → в логе LMS должен быть POST /v1/chat/completions
 curl -X POST http://127.0.0.1:8088/api/v1/lm/smoke
 ```
 
-В LM Studio должен появиться `Received request: POST to /v1/chat/completions`.
 Глубокий health: `curl 'http://127.0.0.1:8088/health?lm=1'`
 
 ## Откуда берётся текст для AI
@@ -168,7 +184,7 @@ curl -X POST http://127.0.0.1:8088/api/v1/lm/smoke
 
 ### LM Studio на другой машине (LAN) + Docker
 
-Если в yaml есть IP вроде `192.168.1.124`, `./up.sh --ai` автоматически подключает
+Если в yaml есть LAN IP (`10.2.12.x`, `192.168.x`, `172.25.x`), `./up.sh --ai` автоматически подключает
 `docker-compose.analizator-lan.yml`: **analizator** идёт в `network_mode: host`
 (тот же сетевой стек, что `curl` на Mac) и видит чужие LM Studio.
 
@@ -179,7 +195,7 @@ curl -X POST http://127.0.0.1:8088/api/v1/lm/smoke
 ```bash
 ./scripts/probe-lm-lan.sh
 curl -s http://127.0.0.1:8088/api/v1/lm/pool
-# у lm-124 должно быть healthy: true
+# у lm-mac-111 / lm-win-172 должно быть healthy: true
 ```
 
 Отключить host-net: `ZAKUPKI_ANALIZATOR_LAN=0 ./up.sh --ai`.
