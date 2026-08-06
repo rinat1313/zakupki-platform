@@ -6,7 +6,7 @@
 #   ./scripts/local-ai-bootstrap.sh
 #
 # Опции:
-#   BRANCH=cursor/fix-auto-ai-docs-7460   # checkout sibling-реп (если задан)
+#   BRANCH=cursor/ui-catalog-csv-7460   # checkout sibling-реп (если задан)
 #   SKIP_GIT=1                            # не трогать git
 #   RESET_FAILED_AI=1                     # other→none в Postgres после up (по умолчанию 1)
 #   NO_BUILD=0                            # передать --no-build в up.sh
@@ -16,7 +16,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 PLATFORM_PARENT="$(cd "$ROOT/.." && pwd)"
 
-BRANCH="${BRANCH:-cursor/fix-auto-ai-docs-7460}"
+BRANCH="${BRANCH:-cursor/ui-catalog-csv-7460}"
 SKIP_GIT="${SKIP_GIT:-0}"
 RESET_FAILED_AI="${RESET_FAILED_AI:-1}"
 NO_BUILD="${NO_BUILD:-0}"
