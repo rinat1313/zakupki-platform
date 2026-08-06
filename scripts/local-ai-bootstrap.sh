@@ -162,6 +162,14 @@ curl -fsS http://127.0.0.1:8088/health >/dev/null && echo "  OK  analizator /hea
 curl -fsS http://127.0.0.1:8080/api/v1/health >/dev/null && echo "  OK  core /health" || { echo "  FAIL core"; fail=1; }
 curl -fsS http://127.0.0.1:3000/health >/dev/null && echo "  OK  gateway /health" || { echo "  FAIL gateway"; fail=1; }
 
+# Убедиться, что контейнер отдал новый UI, а не кэш старого образа.
+if curl -fsS "http://127.0.0.1:3000/app.js" | grep -q "renderAICoverage\|progressLine"; then
+  echo "  OK  gateway UI = новая сборка"
+else
+  echo "  FAIL gateway UI старый — принудительно: ./scripts/force-rebuild-ui.sh"
+  fail=1
+fi
+
 if [[ "$fail" -ne 0 ]]; then
   echo "ERROR: analizator/core недоступны. На Mac почти всегда: host-net сломал :8088." >&2
   echo "  docker compose logs --tail=80 analizator" >&2
