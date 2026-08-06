@@ -65,13 +65,20 @@ if [[ "$SKIP_GIT" != "1" ]]; then
   for r in "${repos[@]}"; do
     (
       cd "$r"
+      name="$(basename "$r")"
       git fetch origin --prune
-      if git show-ref --verify --quiet "refs/remotes/origin/$BRANCH"; then
-        git checkout -B "$BRANCH" "origin/$BRANCH"
-        echo "  OK  $(basename "$r") → $BRANCH"
-      else
-        echo "  WARN $(basename "$r"): нет origin/$BRANCH — оставляем $(git branch --show-current)"
+      if ! git show-ref --verify --quiet "refs/remotes/origin/$BRANCH"; then
+        echo "  WARN $name: нет origin/$BRANCH — оставляем $(git branch --show-current)"
+        exit 0
       fi
+      # Локальные правки (часто lm_studio.yaml) не должны ронять bootstrap.
+      if ! git diff --quiet || ! git diff --cached --quiet || [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
+        stash_msg="local-ai-bootstrap $(date +%Y%m%d-%H%M%S)"
+        git stash push -u -m "$stash_msg" >/dev/null || true
+        echo "  stash $name → $stash_msg"
+      fi
+      git checkout -B "$BRANCH" "origin/$BRANCH"
+      echo "  OK  $name → $BRANCH"
     )
   done
 fi
