@@ -143,9 +143,17 @@ fi
 
 echo "→ health / pool / smoke…"
 sleep 2
-curl -fsS http://127.0.0.1:8088/health >/dev/null && echo "  OK  analizator /health"
-curl -fsS http://127.0.0.1:8080/api/v1/health >/dev/null && echo "  OK  core /health"
-curl -fsS http://127.0.0.1:3000/health >/dev/null && echo "  OK  gateway /health"
+fail=0
+curl -fsS http://127.0.0.1:8088/health >/dev/null && echo "  OK  analizator /health" || { echo "  FAIL analizator :8088"; fail=1; }
+curl -fsS http://127.0.0.1:8080/api/v1/health >/dev/null && echo "  OK  core /health" || { echo "  FAIL core"; fail=1; }
+curl -fsS http://127.0.0.1:3000/health >/dev/null && echo "  OK  gateway /health" || { echo "  FAIL gateway"; fail=1; }
+
+if [[ "$fail" -ne 0 ]]; then
+  echo "ERROR: analizator/core недоступны. На Mac почти всегда: host-net сломал :8088." >&2
+  echo "  docker compose logs --tail=80 analizator" >&2
+  echo "  ZAKUPKI_ANALIZATOR_LAN=0 ./up.sh --down && ZAKUPKI_ANALIZATOR_LAN=0 ./up.sh --ai" >&2
+  exit 1
+fi
 
 echo "  --- lm/pool ---"
 curl -fsS http://127.0.0.1:8088/api/v1/lm/pool | python3 -m json.tool
@@ -157,6 +165,7 @@ if echo "$SMOKE" | python3 -c 'import sys,json; d=json.load(sys.stdin); sys.exit
   echo "  OK  smoke"
 else
   echo "  WARN smoke не ok — смотрите логи LMS / pool"
+  fail=1
 fi
 
 if [[ "$RESET_FAILED_AI" == "1" ]]; then

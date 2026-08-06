@@ -160,11 +160,13 @@ PY
 enable_analizator_lan_net() {
   local joined=" ${COMPOSE_FILES[*]} "
   if [[ "$joined" == *"docker-compose.analizator-lan.yml"* ]]; then
+    # Уже подключено — всё равно форсим URL (иначе остаётся http://analizator:8088).
+    export ANALIZATOR_URL="http://host.docker.internal:8088"
     return 0
   fi
   COMPOSE_FILES+=(-f docker-compose.analizator-lan.yml)
-  # core в bridge → analizator на host :8088
-  export ANALIZATOR_URL="${ANALIZATOR_URL:-http://host.docker.internal:8088}"
+  # core в bridge → analizator на host :8088 (НЕ имя сервиса analizator — его нет в bridge).
+  export ANALIZATOR_URL="http://host.docker.internal:8088"
   echo "OK  analizator network_mode=host (LAN LM Studio)"
   echo "    Docker Desktop Mac: Settings → Resources → Network → Enable host networking"
   echo "    ANALIZATOR_URL=$ANALIZATOR_URL"
@@ -332,18 +334,30 @@ PY
 
   # LAN LM Studio → analizator на host-сети (иначе Docker bridge часто не видит 192.168.x).
   # Принудительно: ZAKUPKI_ANALIZATOR_LAN=1  | отключить: =0
+  # На Mac Docker Desktop host-net часто НЕ пробрасывает :8088 на localhost —
+  # по умолчанию оставляем bridge (LAN IP хоста вроде 10.2.12.111 из контейнера обычно доступен).
   case "${ZAKUPKI_ANALIZATOR_LAN:-auto}" in
     1|true|TRUE|yes|YES)
       enable_analizator_lan_net
       ;;
     0|false|FALSE|no|NO)
       echo "OK  skip analizator host-net (ZAKUPKI_ANALIZATOR_LAN=0)"
+      export ANALIZATOR_URL="${ANALIZATOR_URL:-http://analizator:8088}"
+      # если раньше включили host-net URL — вернём имя сервиса
+      if [[ "$ANALIZATOR_URL" == *"host.docker.internal:8088"* ]]; then
+        export ANALIZATOR_URL="http://analizator:8088"
+      fi
       ;;
     *)
-      if yaml_has_lan_lm "$YAML_LM"; then
+      if [[ "$(uname -s)" == "Darwin" ]]; then
+        echo "OK  Mac: analizator в bridge (не host-net) — :8088 на localhost стабильнее"
+        echo "    LMS: 10.2.12.111 / host.docker.internal; force host-net: ZAKUPKI_ANALIZATOR_LAN=1"
+        export ANALIZATOR_URL="http://analizator:8088"
+      elif yaml_has_lan_lm "$YAML_LM"; then
         enable_analizator_lan_net
       else
         echo "OK  только local LM в yaml — analizator в bridge"
+        export ANALIZATOR_URL="${ANALIZATOR_URL:-http://analizator:8088}"
       fi
       ;;
   esac
