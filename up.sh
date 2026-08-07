@@ -30,13 +30,21 @@ usage() {
 
 Usage:
   ./up.sh              поднять весь стек (собрать Go → образы → контейнеры)
-  ./up.sh --ai         + analizator (LM Studio на хосте :1234)
+  ./up.sh --ai         + analizator (LM Studio уже должен быть запущен вами)
   ./up.sh --full       + redis + kafka + ai
   ./up.sh --down       остановить всё
   ./up.sh --logs       логи
   ./up.sh --health     проверка health
   ./up.sh --from-source  собирать образы полным Dockerfile (без предсборки Go)
   ./up.sh --no-build   не пересобирать
+
+Windows: .\up.ps1 -Ai   |  .\up.cmd -Ai
+
+LM endpoints: analizator_zakupok/configs/lm_studio.yaml (без автостарта lms).
+Опционально старый pool-скрипт: ZAKUPKI_START_LM_POOL=1
+
+Полный AI-пересбор + проверка LMS + сброс зависших анализов:
+  ./scripts/local-ai-bootstrap.sh
 
 Одного скрипта достаточно — сервисы и их Dockerfile поднимаются сами.
 USAGE
@@ -136,6 +144,46 @@ compose() {
   "${COMPOSE[@]}" "${COMPOSE_FILES[@]}" "$@"
 }
 
+# YAML содержит LAN/внешний IP LM Studio (не loopback / host.docker.internal)?
+yaml_has_lan_lm() {
+  local yaml="${1:-}"
+  [[ -f "$yaml" ]] || return 1
+  python3 - "$yaml" <<'PY'
+import re, sys
+from pathlib import Path
+t = Path(sys.argv[1]).read_text(encoding="utf-8")
+local = {"127.0.0.1", "localhost", "0.0.0.0", "::1", "host.docker.internal"}
+# только реальные ключи yaml, не комментарии
+for line in t.splitlines():
+    s = line.strip()
+    if not s or s.startswith("#"):
+        continue
+    m = re.match(r"-\s*base_url:\s*https?://([^:/]+)", s)
+    if not m:
+        continue
+    host = m.group(1).strip().lower()
+    if host not in local:
+        sys.exit(0)
+sys.exit(1)
+PY
+}
+
+# Включить host-сеть для analizator (доступ к LM Studio в LAN).
+enable_analizator_lan_net() {
+  local joined=" ${COMPOSE_FILES[*]} "
+  if [[ "$joined" == *"docker-compose.analizator-lan.yml"* ]]; then
+    # Уже подключено — всё равно форсим URL (иначе остаётся http://analizator:8088).
+    export ANALIZATOR_URL="http://host.docker.internal:8088"
+    return 0
+  fi
+  COMPOSE_FILES+=(-f docker-compose.analizator-lan.yml)
+  # core в bridge → analizator на host :8088 (НЕ имя сервиса analizator — его нет в bridge).
+  export ANALIZATOR_URL="http://host.docker.internal:8088"
+  echo "OK  analizator network_mode=host (LAN LM Studio)"
+  echo "    Docker Desktop Mac: Settings → Resources → Network → Enable host networking"
+  echo "    ANALIZATOR_URL=$ANALIZATOR_URL"
+}
+
 # Docker Compose: значения из текущего shell перекрывают файл .env.
 # Старый `export LM_STUDIO_BASE_URL=...:55674` как раз давал connection refused
 # при работающем LM Studio на :1234.
@@ -149,8 +197,11 @@ ensure_lm_studio_env() {
   fi
 
   # Предпочитаем .env, затем уже export из shell, затем дефолт :1234
-  if [[ -n "$env_url" ]]; then
+  # Отбрасываем мусор вроде "#" (битый парсер комментариев yaml).
+  if [[ -n "$env_url" && "$env_url" == http*://* ]]; then
     export LM_STUDIO_BASE_URL="$env_url"
+  elif [[ -n "${LM_STUDIO_BASE_URL:-}" && "$LM_STUDIO_BASE_URL" != http*://* ]]; then
+    unset LM_STUDIO_BASE_URL
   fi
   export LM_STUDIO_BASE_URL="${LM_STUDIO_BASE_URL:-http://host.docker.internal:1234/v1}"
 
@@ -164,14 +215,18 @@ ensure_lm_studio_env() {
   fi
   export LM_STUDIO_MODEL="${LM_STUDIO_MODEL:-qwen/qwen3-8b}"
 
-  # Жёстко чиним застрявший порт 55674 (и любые не-1234, если ZAKUPKI_LM_FORCE_1234=1)
+  # Чиним только застрявший порт 55674.
   if [[ "$LM_STUDIO_BASE_URL" == *":55674"* ]]; then
-    echo "WARN: LM_STUDIO_BASE_URL содержит старый порт 55674 → принудительно :1234" >&2
+    echo "WARN: LM_STUDIO_BASE_URL содержит старый порт 55674 → host.docker.internal:1234" >&2
     export LM_STUDIO_BASE_URL="http://host.docker.internal:1234/v1"
   fi
-  if [[ "${ZAKUPKI_LM_FORCE_1234:-1}" == "1" ]] && [[ "$LM_STUDIO_BASE_URL" != *":1234"* ]]; then
-    echo "WARN: LM_STUDIO_BASE_URL=$LM_STUDIO_BASE_URL не на :1234 → принудительно host.docker.internal:1234" >&2
-    echo "      (отключить автофикс: ZAKUPKI_LM_FORCE_1234=0)" >&2
+  if [[ "$LM_STUDIO_BASE_URL" != http*://* ]]; then
+    echo "WARN: LM_STUDIO_BASE_URL='$LM_STUDIO_BASE_URL' невалиден → host.docker.internal:1234" >&2
+    export LM_STUDIO_BASE_URL="http://host.docker.internal:1234/v1"
+  fi
+  # Опционально: ZAKUPKI_LM_FORCE_1234=1 только чинит НЕ-:1234 URL
+  if [[ "${ZAKUPKI_LM_FORCE_1234:-0}" == "1" ]] && [[ "$LM_STUDIO_BASE_URL" != *":1234"* ]]; then
+    echo "WARN: LM_STUDIO_BASE_URL=$LM_STUDIO_BASE_URL не на :1234 → host.docker.internal:1234" >&2
     export LM_STUDIO_BASE_URL="http://host.docker.internal:1234/v1"
   fi
 
@@ -249,7 +304,12 @@ prep_bins() {
 
 case "$MODE" in
   down)
-    "${COMPOSE[@]}" -f docker-compose.yml --profile ai --profile redis --profile kafka down
+    # те же override'ы, что могли использоваться при --ai (LAN host-net)
+    down_files=(-f docker-compose.yml)
+    [[ -f docker-compose.runtime.yml ]] && down_files+=(-f docker-compose.runtime.yml)
+    [[ -f docker-compose.analizator-lan.yml ]] && down_files+=(-f docker-compose.analizator-lan.yml)
+    [[ -f docker-compose.host.yml ]] && down_files+=(-f docker-compose.host.yml)
+    "${COMPOSE[@]}" "${down_files[@]}" --profile ai --profile redis --profile kafka down
     echo "stopped"
     exit 0
     ;;
@@ -266,6 +326,82 @@ if [[ "$MODE" == "ai" || "$MODE" == "full" ]]; then
   # Compose: переменные из shell ПЕРЕБИВАЮТ .env — из‑за старого
   # `export LM_STUDIO_BASE_URL=...:55674` контейнер продолжал ходить не туда.
   ensure_lm_studio_env
+
+  # Выравниваем LM_STUDIO_BASE_URL с первым endpoint из yaml (источник правды).
+  YAML_LM="$ANALIZATOR_PATH/configs/lm_studio.yaml"
+  if [[ -f "$YAML_LM" ]]; then
+    first_url="$(python3 - "$YAML_LM" <<'PY'
+import re, sys
+from pathlib import Path
+t = Path(sys.argv[1]).read_text(encoding="utf-8")
+url = ""
+for line in t.splitlines():
+    s = line.strip()
+    if not s or s.startswith("#"):
+        continue
+    m = re.match(r"-\s*base_url:\s*(https?://\S+)", s)
+    if m:
+        url = m.group(1).strip().rstrip("/")
+        break
+print(url)
+PY
+)"
+    # отбросить мусор вроде "#" из старых парсеров / .env
+    if [[ -n "$first_url" && "$first_url" == http* ]]; then
+      export LM_STUDIO_BASE_URL="$first_url"
+      if [[ -f .env ]]; then
+        tmp="$(mktemp)"
+        grep -v -E '^[[:space:]]*LM_STUDIO_BASE_URL=' .env >"$tmp" || true
+        echo "LM_STUDIO_BASE_URL=$LM_STUDIO_BASE_URL" >>"$tmp"
+        mv "$tmp" .env
+      fi
+      echo "OK  LM_STUDIO_BASE_URL ← yaml primary: $LM_STUDIO_BASE_URL"
+    fi
+  fi
+
+  # LAN LM Studio → analizator на host-сети (иначе Docker bridge часто не видит 192.168.x).
+  # Принудительно: ZAKUPKI_ANALIZATOR_LAN=1  | отключить: =0
+  # На Mac Docker Desktop host-net часто НЕ пробрасывает :8088 на localhost —
+  # по умолчанию оставляем bridge (LAN IP хоста из yaml из контейнера обычно доступен).
+  case "${ZAKUPKI_ANALIZATOR_LAN:-auto}" in
+    1|true|TRUE|yes|YES)
+      enable_analizator_lan_net
+      ;;
+    0|false|FALSE|no|NO)
+      echo "OK  skip analizator host-net (ZAKUPKI_ANALIZATOR_LAN=0)"
+      export ANALIZATOR_URL="${ANALIZATOR_URL:-http://analizator:8088}"
+      # если раньше включили host-net URL — вернём имя сервиса
+      if [[ "$ANALIZATOR_URL" == *"host.docker.internal:8088"* ]]; then
+        export ANALIZATOR_URL="http://analizator:8088"
+      fi
+      ;;
+    *)
+      if [[ "$(uname -s)" == "Darwin" ]]; then
+        echo "OK  Mac: analizator в bridge (не host-net) — :8088 на localhost стабильнее"
+        echo "    LMS URL берите из analizator configs/lm_studio.yaml; force host-net: ZAKUPKI_ANALIZATOR_LAN=1"
+        export ANALIZATOR_URL="http://analizator:8088"
+      elif yaml_has_lan_lm "$YAML_LM"; then
+        enable_analizator_lan_net
+      else
+        echo "OK  только local LM в yaml — analizator в bridge"
+        export ANALIZATOR_URL="${ANALIZATOR_URL:-http://analizator:8088}"
+      fi
+      ;;
+  esac
+
+  # Автостарт LM Studio отключён: сервер и модель поднимайте сами.
+  # Список endpoint'ов — только yaml. Принудительно старый pool-скрипт: ZAKUPKI_START_LM_POOL=1
+  if [[ "${ZAKUPKI_START_LM_POOL:-0}" == "1" ]]; then
+    echo "→ LM Studio pool start (ZAKUPKI_START_LM_POOL=1)…"
+    ANALIZATOR_PATH="$ANALIZATOR_PATH" \
+      LM_STUDIO_MODEL="${LM_STUDIO_MODEL:-qwen/qwen3-8b}" \
+      LM_STUDIO_API_KEY="${LM_STUDIO_API_KEY:-lm-studio}" \
+      bash "$ROOT/scripts/lm-studio-start-pool.sh" || {
+        echo "WARN: lm-studio-start-pool.sh завершился с ошибкой — контейнеры всё равно подниму" >&2
+      }
+  else
+    echo "OK  skip автостарт LM Studio (задайте endpoints в configs/lm_studio.yaml)"
+  fi
 fi
 
 profiles=()
@@ -326,6 +462,11 @@ echo "  Parser:   http://localhost:8091/health"
 echo "  Customer: http://localhost:8092/health"
 if [[ "$MODE" == "ai" || "$MODE" == "full" ]]; then
   echo "  Analizator: http://localhost:8088/health"
+  echo "  LM pool:    curl -s http://127.0.0.1:8088/api/v1/lm/pool"
+  if [[ -x "$ROOT/scripts/probe-lm-lan.sh" ]]; then
+    echo "→ проверка LAN LM Studio…"
+    bash "$ROOT/scripts/probe-lm-lan.sh" || true
+  fi
 fi
 echo
 echo "Остановить: ./up.sh --down"
