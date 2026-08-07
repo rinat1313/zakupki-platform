@@ -221,15 +221,15 @@ curl -s http://127.0.0.1:8088/api/v1/lm/pool
 2. стартует локальный LMS при необходимости;
 3. проверяет удалённые (`/v1/models`).
 
-Многопоточность AI: core держит до **`ANALYZE_MAX_PARALLEL` (по умолчанию 4)** одновременных анализов карточек.
-Ёмкость синхронизируется с `max_parallel` пула LM (`concurrent: 4` / живые слоты). Analizator **не** режет параллелизм по CPU контейнера.
+Многопоточность AI: по умолчанию **1 слот** (одна карточка → один запрос к одной модели на одном сервере).
+Ёмкость core синхронизируется с `max_parallel` пула LM (`concurrent: 1` в yaml, потолок `LM_MAX_PARALLEL=1`).
+Параллель >1 часто переполняет контекст LMS — поднимайте только если уверены в железе.
 
 Проверка:
 ```bash
-curl -s http://127.0.0.1:8088/api/v1/lm/pool   # max_parallel: 4
-curl -s http://127.0.0.1:8080/api/v1/workers    # analyze_capacity: 4
+curl -s http://127.0.0.1:8088/api/v1/lm/pool   # max_parallel: 1
+curl -s http://127.0.0.1:8080/api/v1/workers    # analyze_capacity: 1
 ```
-В логах core: `auto-ai: start … (slot 1/4)` … до 4 штук сразу.
 
 ### Один Mac
 
@@ -263,7 +263,7 @@ cd zakupki-platform && git pull   # ветка с пулом
 (cd ../analizator_zakupok && git pull)
 ./up.sh --down && ./up.sh --ai
 curl -s http://127.0.0.1:8088/api/v1/lm/pool
-# ожидается healthy>=1, concurrent/max_parallel до 4
+# ожидается healthy>=1, max_parallel: 1
 ```
 
 Пропуск автостарта: `ZAKUPKI_SKIP_LM_POOL=1 ./up.sh --ai`.
