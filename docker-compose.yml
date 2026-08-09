@@ -27,6 +27,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./migrations/000_create_search_db.sql:/docker-entrypoint-initdb.d/00_create_search_db.sql:ro
       - ./migrations/001_init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U zakupki -d zakupki"]

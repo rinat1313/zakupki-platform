@@ -29,7 +29,7 @@
 | Gateway / UI | `zakupki-gateway` | пользовательский UX, загрузка CSV, прокси |
 | Core / СУБД | `zakupki-core` | домен, очередь ingest, статусы, assessments |
 | Parser | `zakupki-parser` | ЕИС + адаптеры площадок **в одном сервисе** |
-| Search | `zakupki-search` | поиск по каталогу закупок (`:8093`, опциональный sibling) |
+| Search | `zakupki-search` | профили поиска ЕИС + auth (`:8093` в platform; БД `zakupki_search`) |
 | Analizator | `analizator_zakupok` | правила/чек-листы + LM Studio |
 | Customer | `zakupki-customer` | ФНС/суды/ФАС/РНП (stub → рост) |
 

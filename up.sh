@@ -149,28 +149,6 @@ compose() {
   "${COMPOSE[@]}" "${COMPOSE_FILES[@]}" "$@"
 }
 
-# Ищем Go main в sibling-репо (cmd/search | cmd/service | первый cmd/*).
-resolve_go_main() {
-  local path="$1"
-  local c d
-  for c in cmd/search cmd/service cmd/zakupki-search; do
-    if [[ -f "$path/$c/main.go" ]] || compgen -G "$path/$c/*.go" >/dev/null 2>&1; then
-      echo "./$c"
-      return 0
-    fi
-  done
-  if [[ -d "$path/cmd" ]]; then
-    for d in "$path"/cmd/*; do
-      [[ -d "$d" ]] || continue
-      if compgen -G "$d/*.go" >/dev/null 2>&1; then
-        echo "./cmd/$(basename "$d")"
-        return 0
-      fi
-    done
-  fi
-  return 1
-}
-
 # Архитектура Linux-контейнеров Docker (не хоста macOS!).
 docker_go_arch() {
   local arch
@@ -209,18 +187,16 @@ prep_bins() {
     fi
   fi
   if [[ "${ENABLE_SEARCH:-0}" == "1" ]]; then
-    local search_pkg
-    search_pkg="$(resolve_go_main "$SEARCH_PATH")" || {
-      echo "ERROR: в $SEARCH_PATH нет Go main (ожидается cmd/search или cmd/service)" >&2
-      exit 1
-    }
-    mkdir -p "$SEARCH_PATH/bin"
-    echo "OK  search package = $search_pkg"
-    (cd "$SEARCH_PATH" && CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -o bin/search "$search_pkg")
-    if [[ ! -f "$SEARCH_PATH/Dockerfile.runtime" ]]; then
-      echo "ERROR: нет Dockerfile.runtime в $SEARCH_PATH" >&2
+    # search собирается полным Dockerfile в образе (миграции + binary).
+    if [[ ! -f "$SEARCH_PATH/Dockerfile" ]]; then
+      echo "ERROR: нет Dockerfile в $SEARCH_PATH" >&2
       exit 1
     fi
+    if [[ ! -d "$SEARCH_PATH/cmd/search" ]]; then
+      echo "ERROR: ожидается $SEARCH_PATH/cmd/search" >&2
+      exit 1
+    fi
+    echo "OK  search → Docker multi-stage (Dockerfile), HTTP :8093, DB zakupki_search"
   fi
   # ensure runtime dockerfiles exist
   for pair in \
@@ -290,6 +266,34 @@ if [[ ${#profiles[@]} -gt 0 ]]; then
   compose "${profiles[@]}" "${up_args[@]}"
 else
   compose "${up_args[@]}"
+fi
+
+# БД search на уже существующем volume init-скрипт не пересоздаст — гарантируем здесь.
+ensure_search_db() {
+  [[ "${ENABLE_SEARCH:-0}" == "1" ]] || return 0
+  echo "→ ensure database zakupki_search…"
+  local i
+  for i in $(seq 1 30); do
+    if compose exec -T postgres pg_isready -U zakupki >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+  if compose exec -T postgres psql -U zakupki -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='zakupki_search'" 2>/dev/null | grep -q 1; then
+    echo "OK  database zakupki_search exists"
+    return 0
+  fi
+  if compose exec -T postgres psql -U zakupki -d postgres -c "CREATE DATABASE zakupki_search OWNER zakupki;" >/dev/null 2>&1; then
+    echo "OK  created database zakupki_search"
+    return 0
+  fi
+  echo "WARN: не удалось создать zakupki_search — search может не стартовать" >&2
+}
+
+ensure_search_db
+if [[ "${ENABLE_SEARCH:-0}" == "1" ]]; then
+  echo "→ дожидаюсь search…"
+  compose up -d --no-deps search >/dev/null 2>&1 || true
 fi
 
 echo

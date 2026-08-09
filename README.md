@@ -41,5 +41,5 @@
 | [zakupki-core](https://github.com/rinat1313/zakupki-core) | 8080 | домен + PostgreSQL |
 | [zakupki-parser](https://github.com/rinat1313/zakupki-parser) | 8091 | парсинг ЕИС и ЭТП |
 | [zakupki-customer](https://github.com/rinat1313/zakupki-customer) | 8092 | обогащение заказчика |
-| [zakupki-search](https://github.com/rinat1313/zakupki-search) | 8093 | поиск по закупкам (если sibling есть) |
+| [zakupki-search](https://github.com/rinat1313/zakupki-search) | 8093 | поисковые профили ЕИС (своя БД `zakupki_search`; в репо дефолт :8091) |
 | [analizator_zakupok](https://github.com/rinat1313/analizator_zakupok) | 8088 | AI-анализ (profile `ai`) |

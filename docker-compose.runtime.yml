@@ -21,7 +21,5 @@ services:
     build:
       context: ${ANALIZATOR_PATH:-../analizator_zakupok}
       dockerfile: Dockerfile.runtime
-  search:
-    build:
-      context: ${SEARCH_PATH:-../zakupki-search}
-      dockerfile: Dockerfile.runtime
+  # search: пока только полный Dockerfile в репо (нет Dockerfile.runtime) —
+  # override задаётся в docker-compose.search.yml.
