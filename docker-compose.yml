@@ -117,7 +117,6 @@ services:
     profiles: ["ai"]
     build:
       context: ${ANALIZATOR_PATH:-../analizator_zakupok}
-    # Только wiring Docker. LM Studio / dose / checklist — дефолты образа и configs/ в репо analizator.
     environment:
       HTTP_ADDR: ":8088"
       TENDERS_ROOT: /data/tenders
