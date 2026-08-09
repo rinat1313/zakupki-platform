@@ -17,17 +17,27 @@ git pull origin main
 
 ## AI-анализ: `analizator disabled` / `connection refused`
 
-`zakupki-platform` **не** перезаписывает LM/dose-конфиг. Настройки — в образе и `configs/` репозитория `analizator_zakupok` (или ENV, заданные в его Dockerfile).
+AI поднимается **только** через `./up.sh --ai` (или `--full`). Обычный `./up.sh` анализатор не стартует — `health.sh` покажет `SKIP`, и это нормально.
 
-`./up.sh --ai` только поднимает контейнер и выставляет wiring `ANALIZATOR_URL` для core.
+Wiring:
+
+| Кто | Куда |
+|-----|------|
+| core (Docker bridge) | `ANALIZATOR_URL=http://analizator:8088` |
+| analizator → LM Studio | `http://host.docker.internal:1234/v1` (образ `analizator_zakupok@main` + compose) |
+
+В `.env` **нельзя**:
+
+- пустой `ANALIZATOR_URL=` — core видит `analizator=disabled`
+- `ANALIZATOR_URL=http://127.0.0.1:8088` для core в **bridge** — из контейнера `127.0.0.1` это сам core, не analizator  
+  (для host-network `./up.sh` сам ставит `127.0.0.1:8088`)
+
+`zakupki-platform` **не** перезаписывает LM/dose-конфиг (промпты, dose). Sibling `analizator_zakupok` берите с `origin/main`.
 
 ### 1. LM Studio на Mac
 
 - модель загружена, Server → Start
-- порт как в конфиге analizator (часто **1234**)
-- желательно **Serve on Local Network** / bind `0.0.0.0`
-
-Проверка:
+- порт **1234**, лучше **Serve on Local Network** / bind `0.0.0.0`
 
 ```bash
 curl http://127.0.0.1:1234/v1/models
@@ -40,7 +50,7 @@ analizator_zakupok/configs/          # lm_studio.yaml, checklists, prompts
 analizator_zakupok/Dockerfile*       # ENV по умолчанию в образе
 ```
 
-Не задавайте `LM_STUDIO_*` / `PAGE_CHARS` / `DOSE_*` в `zakupki-platform/.env` «на всякий случай» — compose их больше не форсит, а старый `export` в shell может всё ещё попасть в контейнер, если вы сами пробросите переменную.
+Не задавайте `LM_STUDIO_*` / `PAGE_CHARS` / `DOSE_*` в `zakupki-platform/.env` «на всякий случай».
 
 ### 3. Перезапуск стека с AI
 
@@ -53,12 +63,13 @@ cd /path/to/zakupki-platform
 ### 4. Проверка
 
 ```bash
-curl http://127.0.0.1:1234/v1/models
-curl http://127.0.0.1:8088/health
-curl http://127.0.0.1:8080/api/v1/health
+curl -s http://127.0.0.1:1234/v1/models
+curl -s http://127.0.0.1:8088/health
+curl -s http://127.0.0.1:8080/api/v1/health
+# ожидаем "analizator":"ok"
 ```
 
-В `8080/health` ожидайте `"analizator":"ok"`.
+`./up.sh --ai` после общего health дополнительно проверяет analizator и что core видит `"analizator":"ok"`.
 
 ### 5. UI
 
