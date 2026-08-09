@@ -252,7 +252,7 @@ esac
 if [[ "$MODE" == "ai" || "$MODE" == "full" ]]; then
   export ANALIZATOR_URL="${ANALIZATOR_URL:-http://analizator:8088}"
 fi
-# Wiring: search → core (sync тендеров). Gateway search пока не проксирует.
+# Wiring: search → core (sync); SEARCH_URL для gateway задаётся в docker-compose.search.yml.
 if [[ "${ENABLE_SEARCH:-0}" == "1" ]]; then
   if [[ "${ZAKUPKI_HOST_NET:-0}" == "1" ]]; then
     export CORE_URL="${CORE_URL:-http://127.0.0.1:8080}"
