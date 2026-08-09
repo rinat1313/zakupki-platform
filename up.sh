@@ -237,14 +237,14 @@ esac
 if [[ "$MODE" == "ai" || "$MODE" == "full" ]]; then
   export ANALIZATOR_URL="${ANALIZATOR_URL:-http://analizator:8088}"
 fi
-# Wiring: gateway/core могут ходить в search (если сервис поднят).
+# Wiring: search → core (sync тендеров). Gateway search пока не проксирует.
 if [[ "${ENABLE_SEARCH:-0}" == "1" ]]; then
   if [[ "${ZAKUPKI_HOST_NET:-0}" == "1" ]]; then
-    export SEARCH_URL="${SEARCH_URL:-http://127.0.0.1:8093}"
+    export CORE_URL="${CORE_URL:-http://127.0.0.1:8080}"
   else
-    export SEARCH_URL="${SEARCH_URL:-http://search:8093}"
+    export CORE_URL="${CORE_URL:-http://core:8080}"
   fi
-  echo "OK  SEARCH_URL = $SEARCH_URL"
+  echo "OK  search CORE_URL = $CORE_URL  (HTTP :8093)"
 fi
 
 profiles=()
@@ -258,17 +258,7 @@ fi
 up_args=(up -d --remove-orphans)
 [[ $NO_BUILD -eq 0 ]] && up_args+=(--build)
 
-echo
-echo "→ поднимаю контейнеры ($MODE)…"
-# Без Progress=tty на Mac иногда кажется, что зависло на "up 2/3" (особенно build analizator).
-export BUILDKIT_PROGRESS="${BUILDKIT_PROGRESS:-plain}"
-if [[ ${#profiles[@]} -gt 0 ]]; then
-  compose "${profiles[@]}" "${up_args[@]}"
-else
-  compose "${up_args[@]}"
-fi
-
-# БД search на уже существующем volume init-скрипт не пересоздаст — гарантируем здесь.
+# БД search на уже существующем volume init-скрипт не пересоздаст — гарантируем до старта search.
 ensure_search_db() {
   [[ "${ENABLE_SEARCH:-0}" == "1" ]] || return 0
   echo "→ ensure database zakupki_search…"
@@ -290,10 +280,18 @@ ensure_search_db() {
   echo "WARN: не удалось создать zakupki_search — search может не стартовать" >&2
 }
 
-ensure_search_db
+echo
+echo "→ поднимаю контейнеры ($MODE)…"
+# Без Progress=tty на Mac иногда кажется, что зависло на "up 2/3" (особенно build analizator).
+export BUILDKIT_PROGRESS="${BUILDKIT_PROGRESS:-plain}"
 if [[ "${ENABLE_SEARCH:-0}" == "1" ]]; then
-  echo "→ дожидаюсь search…"
-  compose up -d --no-deps search >/dev/null 2>&1 || true
+  compose up -d postgres
+  ensure_search_db
+fi
+if [[ ${#profiles[@]} -gt 0 ]]; then
+  compose "${profiles[@]}" "${up_args[@]}"
+else
+  compose "${up_args[@]}"
 fi
 
 echo
