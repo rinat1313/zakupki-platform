@@ -1,0 +1,136 @@
+openapi: 3.0.3
+info:
+  title: Zakupki Customer (internal stubs)
+  version: 0.1.0
+  description: |
+    Сервис `zakupki-customer` (:8092) — заготовки обогащения заказчика
+    (суды, РНП, ФНС, ФАС). Сейчас возвращает пустые структуры.
+
+servers:
+  - url: http://localhost:8092
+    description: Local customer service
+
+paths:
+  /health:
+    get:
+      summary: Health-check
+      operationId: customerHealth
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: zakupki-customer
+
+  /api/v1/customers/{id}/courts:
+    get:
+      summary: Судебные дела (stub → [])
+      operationId: customerCourts
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200":
+          description: Пустой список
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {}
+
+  /api/v1/customers/{id}/rnp:
+    get:
+      summary: Реестр недобросовестных поставщиков (stub → [])
+      operationId: customerRnp
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200":
+          description: Пустой список
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {}
+
+  /api/v1/customers/{id}/fns:
+    get:
+      summary: Данные ФНС (stub → [])
+      operationId: customerFns
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200":
+          description: Пустой список
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {}
+
+  /api/v1/customers/{id}/fas:
+    get:
+      summary: Данные ФАС (stub → [])
+      operationId: customerFas
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200":
+          description: Пустой список
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {}
+
+  /api/v1/enrich/{inn}:
+    get:
+      summary: Сводное обогащение по ИНН (stub)
+      operationId: enrichByInn
+      parameters:
+        - name: inn
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Stub payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  inn:
+                    type: string
+                  courts:
+                    type: array
+                    items: {}
+                  rnp:
+                    type: array
+                    items: {}
+                  fns:
+                    type: object
+                    additionalProperties: true
+                  fas:
+                    type: array
+                    items: {}
+                  status:
+                    type: string
+                    example: stub
+
+components:
+  parameters:
+    ID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string

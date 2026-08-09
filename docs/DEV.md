@@ -34,7 +34,7 @@ Legacy-исследование ЕИС может оставаться в `Zakup
 ## Как вести разработку
 
 1. Фича в одном сервисе → ветка `cursor/<name>-XXXX` только в его репо.
-2. Контракт (новый эндпоинт/событие) → обновить `zakupki-platform/contracts` + README сервисов в том же PR-наборе.
+2. Контракт (новый эндпоинт/событие) → обновить `zakupki-platform/contracts` (в т.ч. OpenAPI в `contracts/openapi/`) + README сервисов в том же PR-наборе. Просмотр: `make swagger`.
 3. Миграции PG — только в `zakupki-platform/migrations` (не плодить init.sql в каждом сервисе).
 4. Локально без Docker: поднять postgres, затем `go run` в parser → core → gateway.
 5. Cursor Cloud Agent: добавить в environment репозитории  

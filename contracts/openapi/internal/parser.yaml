@@ -1,0 +1,93 @@
+openapi: 3.0.3
+info:
+  title: Zakupki Parser (internal)
+  version: 1.0.0
+  description: |
+    Внутренний сервис `zakupki-parser` (:8091).
+    Вызывается из `zakupki-core` для загрузки извещения ЕИС / площадки и извлечения текста документов.
+
+servers:
+  - url: http://localhost:8091
+    description: Local parser
+
+paths:
+  /health:
+    get:
+      summary: Health-check
+      operationId: parserHealth
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: zakupki-parser
+                  adapters:
+                    type: array
+                    items:
+                      type: string
+                    example:
+                      - zakupki.gov.ru (eis)
+                      - tektorg.ru
+                      - roseltorg.ru
+
+  /api/v1/fetch:
+    post:
+      summary: Загрузить карточку закупки по регномеру
+      description: |
+        Резолвит площадку и пытается собрать notice + документы.
+        Агрегаторы часто содержат номера ЕИС — парсер в первую очередь ходит на zakupki.gov.ru.
+      operationId: fetchTender
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reg_number]
+              properties:
+                reg_number:
+                  type: string
+                  example: "0373100075325000001"
+                source_site:
+                  type: string
+                  example: https://zakupki.gov.ru
+      responses:
+        "200":
+          description: Результат fetch (даже при failed)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reg_number:
+                    type: string
+                  source_site:
+                    type: string
+                  source_used:
+                    type: string
+                  failed:
+                    type: boolean
+                  message:
+                    type: string
+                  result:
+                    type: object
+                    nullable: true
+                    additionalProperties: true
+                    description: Карточка + документы (структура adapter/EIS)
+        "400":
+          description: Невалидный запрос
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string

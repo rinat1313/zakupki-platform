@@ -1,0 +1,342 @@
+openapi: 3.0.3
+info:
+  title: Analizator Zakupok (internal)
+  version: 1.0.0
+  description: |
+    Внутренний сервис `analizator_zakupok` (:8088), профиль compose `ai`.
+    Делает дозированный AI-анализ текста закупки через LM Studio (пул эндпоинтов).
+
+    Core передаёт corpus в поле `text` (из PostgreSQL `documents.text_content`).
+
+servers:
+  - url: http://localhost:8088
+    description: Local analizator
+
+paths:
+  /health:
+    get:
+      summary: Health-check (+ опциональный probe LM Studio)
+      operationId: analizatorHealth
+      parameters:
+        - name: lm
+          in: query
+          schema:
+            type: string
+            enum: ["1"]
+          description: Проверить доступность LM Studio
+        - name: deep
+          in: query
+          schema:
+            type: string
+            enum: ["1"]
+          description: То же, что lm=1
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  service:
+                    type: string
+                    example: analizator_zakupok
+                  tenders_root:
+                    type: string
+                  lm_base_url:
+                    type: string
+                  lm_model:
+                    type: string
+                  lm_studio:
+                    type: string
+                    enum: [ok, unavailable, skipped]
+                  lm_studio_error:
+                    type: string
+                  lm_pool:
+                    type: object
+                    additionalProperties: true
+                  lm_max_parallel:
+                    type: integer
+                  time:
+                    type: string
+                    format: date-time
+
+  /api/v1/checklists:
+    get:
+      summary: Список чек-листов
+      operationId: listChecklists
+      responses:
+        "200":
+          description: IDs чек-листов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  checklists:
+                    type: array
+                    items:
+                      type: string
+
+  /api/v1/analyze:
+    post:
+      summary: Запустить дозированный AI-анализ
+      description: |
+        Нужен `reg_number` или `text`. Текст режется на порции → краткие заметки → итоговая рекомендация.
+      operationId: analyze
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyzeRequest"
+            example:
+              reg_number: "0373100075325000001"
+              title: Поставка резервуаров
+              checklist_id: default
+              text: "...текст документов..."
+      responses:
+        "200":
+          description: Результат анализа
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisResult"
+        "400":
+          description: Невалидный JSON / нет reg_number и text
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Ошибка анализа
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/analyze/progress/{reg}:
+    get:
+      summary: Прогресс текущего анализа по регномеру
+      operationId: analyzeProgress
+      parameters:
+        - name: reg
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Прогресс (idle, если нет активного)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reg_number:
+                    type: string
+                  percent:
+                    type: integer
+                  doses_done:
+                    type: integer
+                  doses_total:
+                    type: integer
+                  phase:
+                    type: string
+                    example: idle
+
+  /api/v1/analysis/{reg}:
+    get:
+      summary: Сохранённый результат анализа
+      operationId: getAnalysis
+      parameters:
+        - name: reg
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: AnalysisResult
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisResult"
+        "404":
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/lm/pool:
+    get:
+      summary: Статус пула LM Studio эндпоинтов
+      operationId: lmPool
+      responses:
+        "200":
+          description: Pool status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  healthy:
+                    type: integer
+                  busy:
+                    type: integer
+                  available:
+                    type: integer
+                  max_parallel:
+                    type: integer
+                  endpoints:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+
+  /api/v1/lm/smoke:
+    post:
+      summary: Smoke-тест chat/completions в LM Studio
+      operationId: lmSmoke
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  model:
+                    type: string
+                  content:
+                    type: string
+                  lm_url:
+                    type: string
+        "502":
+          description: LM Studio недоступен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                  lm_url:
+                    type: string
+                  model:
+                    type: string
+                  expect:
+                    type: string
+
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+
+    AnalyzeRequest:
+      type: object
+      properties:
+        reg_number:
+          type: string
+        text:
+          type: string
+          description: Corpus документов из PostgreSQL (основной путь платформы)
+        checklist_id:
+          type: string
+        title:
+          type: string
+        config_name:
+          type: string
+        system_prompt:
+          type: string
+        user_prompt:
+          type: string
+        rules:
+          type: string
+
+    ItemResult:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+          enum: [ok, warn, fail, unknown]
+        score:
+          type: number
+        findings:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+        chunk_ids:
+          type: array
+          items:
+            type: string
+
+    AnalysisResult:
+      type: object
+      properties:
+        reg_number:
+          type: string
+        law:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, completed, failed]
+        checklist_id:
+          type: string
+        checklist_name:
+          type: string
+        model:
+          type: string
+        recommendation:
+          type: string
+          enum: [participate, caution, skip, unknown]
+        score:
+          type: number
+        summary:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ItemResult"
+        risks:
+          type: array
+          items:
+            type: string
+        actions:
+          type: array
+          items:
+            type: string
+        sources_used:
+          type: array
+          items:
+            type: string
+        chunks_total:
+          type: integer
+        chunks_used:
+          type: integer
+        error:
+          type: string
+        started_at:
+          type: string
+        analyzed_at:
+          type: string
+        raw_synthesize:
+          type: string
