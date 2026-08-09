@@ -1,4 +1,4 @@
-.PHONY: up up-ai up-full down logs health clone-siblings
+.PHONY: up up-ai up-full down logs health clone-siblings sync-siblings
 
 up:
 	./up.sh
@@ -18,5 +18,6 @@ logs:
 health:
 	./up.sh --health
 
-clone-siblings:
+# Клон/обновление всех sibling-реп с origin/main (финальная ветка).
+clone-siblings sync-siblings:
 	@./scripts/clone-siblings.sh

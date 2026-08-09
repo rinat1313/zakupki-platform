@@ -23,6 +23,7 @@ fi
 MODE="default"
 NO_BUILD=0
 FROM_SOURCE=0
+NO_SYNC=0
 
 usage() {
   cat <<'USAGE'
@@ -37,8 +38,10 @@ Usage:
   ./up.sh --health     проверка health
   ./up.sh --from-source  собирать образы полным Dockerfile (без предсборки Go)
   ./up.sh --no-build   не пересобирать
+  ./up.sh --no-sync    не обновлять siblings с main перед сборкой
 
 Одного скрипта достаточно — сервисы и их Dockerfile поднимаются сами.
+Siblings всегда берутся с ветки main (SIBLING_BRANCH), если не указан --no-sync.
 USAGE
 }
 
@@ -51,6 +54,7 @@ while [[ $# -gt 0 ]]; do
     --health) MODE=health ;;
     --no-build) NO_BUILD=1 ;;
     --from-source) FROM_SOURCE=1 ;;
+    --no-sync) NO_SYNC=1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown arg: $1" >&2; usage; exit 1 ;;
   esac
@@ -58,6 +62,17 @@ while [[ $# -gt 0 ]]; do
 done
 
 PARENT="$(cd "$ROOT/.." && pwd)"
+
+# Политика: перед сборкой siblings = origin/main (финальная ветка сервисов).
+if [[ "$MODE" != "down" && "$MODE" != "logs" && "$MODE" != "health" ]]; then
+  if [[ "${ZAKUPKI_SKIP_SIBLING_SYNC:-0}" == "1" || "$NO_SYNC" == "1" ]]; then
+    echo "SKIP sibling sync (main)"
+  else
+    echo "→ sync siblings с origin/${SIBLING_BRANCH:-main}…"
+    "$ROOT/scripts/clone-siblings.sh"
+  fi
+fi
+
 resolve_repo() {
   local name="$1"
   local envvar="$2"
