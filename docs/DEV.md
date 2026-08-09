@@ -43,7 +43,7 @@ Legacy-исследование ЕИС может оставаться в `Zakup
    `zakupki-customer` (stub), `zakupki-search`, `analizator_zakupok`.  
    Legacy `zakupkiparser` — по желанию для фикстур HTML.
    `./up.sh` поднимает search автоматически, если sibling `zakupki-search` рядом
-   (`Dockerfile` + `cmd/search`, порт platform `:8093`, БД `zakupki_search`).
+   (`Dockerfile` + `cmd/search`, порт `:8093`, БД `zakupki_search`, `CORE_URL`→core).
 
 ## Минимальный smoke
 
