@@ -29,6 +29,8 @@ services:
       HTTP_ADDR: ":3000"
       CORE_URL: http://127.0.0.1:8080
       CUSTOMER_URL: http://127.0.0.1:8092
+      # Перекрывает SEARCH_URL из docker-compose.search.yml (там http://search:8093).
+      SEARCH_URL: http://127.0.0.1:8093
       UI_DIR: /app/ui
     depends_on:
       - core

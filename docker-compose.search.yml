@@ -1,6 +1,7 @@
 # Подключается из ./up.sh, если рядом есть sibling zakupki-search.
 # Сервис: поисковые профили ЕИС (своя БД zakupki_search, миграции внутри образа).
 # Порт платформы :8093 (в репо search дефолт :8091 — конфликтует с parser).
+# Gateway получает SEARCH_URL → раздел «Поисковики» в UI без ручного export.
 
 services:
   search:
@@ -26,5 +27,10 @@ services:
       timeout: 5s
       retries: 15
 
-  # gateway пока не проксирует search (нет SEARCH_URL в коде gateway);
-  # UI/клиенты ходят на :8093 напрямую (CORS включён в search).
+  # Override gateway из docker-compose.yml: раздел «Поисковики» в UI.
+  gateway:
+    environment:
+      SEARCH_URL: http://search:8093
+    depends_on:
+      search:
+        condition: service_started
