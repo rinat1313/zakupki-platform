@@ -62,14 +62,19 @@ while [[ $# -gt 0 ]]; do
 done
 
 PARENT="$(cd "$ROOT/.." && pwd)"
+export ZAKUPKI_PARENT="$PARENT"
 
 # Политика: перед сборкой siblings = origin/main (финальная ветка сервисов).
 if [[ "$MODE" != "down" && "$MODE" != "logs" && "$MODE" != "health" ]]; then
   if [[ "${ZAKUPKI_SKIP_SIBLING_SYNC:-0}" == "1" || "$NO_SYNC" == "1" ]]; then
     echo "SKIP sibling sync (main)"
+    # Без sync не делаем hard-reset sibling — только пробуем наложить патч, если применим.
+    ZAKUPKI_PATCH_FORCE_RESET=0 "$ROOT/scripts/apply-sibling-patches.sh" || true
   else
     echo "→ sync siblings с origin/${SIBLING_BRANCH:-main}…"
     "$ROOT/scripts/clone-siblings.sh"
+    # Локальные launch-патчи (пока нет push в sibling / фикс не в main).
+    "$ROOT/scripts/apply-sibling-patches.sh"
   fi
 fi
 
@@ -296,6 +301,14 @@ ensure_search_db() {
 }
 
 echo
+echo "→ проверяю compose-конфиг…"
+if ! compose config -q; then
+  echo "ERROR: docker compose config невалиден — сборку не начинаем" >&2
+  exit 1
+fi
+echo "OK  compose config"
+
+echo
 echo "→ поднимаю контейнеры ($MODE)…"
 # Без Progress=tty на Mac иногда кажется, что зависло на "up 2/3" (особенно build analizator).
 export BUILDKIT_PROGRESS="${BUILDKIT_PROGRESS:-plain}"
@@ -309,10 +322,40 @@ else
   compose "${up_args[@]}"
 fi
 
+dump_failed_services() {
+  echo >&2
+  echo "Статус контейнеров:" >&2
+  compose ps -a || true
+  # Сервисы в Exited/Restarting — сразу их логи (panic виден без ожидания 2 мин).
+  local svc
+  for svc in core gateway parser customer search postgres analizator; do
+    local st
+    st="$(compose ps -a --format '{{.Service}} {{.Status}}' 2>/dev/null | awk -v s="$svc" '$1==s {print $2}' | head -1 || true)"
+    if [[ -z "$st" ]]; then
+      continue
+    fi
+    case "$st" in
+      Exited*|Restarting*|Dead*|created)
+        echo >&2
+        echo "—— logs $svc ($st) ——" >&2
+        compose logs --tail=80 "$svc" || true
+        ;;
+    esac
+  done
+}
+
 echo
 echo "→ жду health (до ~2 мин)…"
 ok=0
 for i in $(seq 1 60); do
+  # Быстрый fail: core/gateway и т.п. уже упали с panic — не крутить 60 попыток.
+  if compose ps -a --format '{{.Service}} {{.Status}}' 2>/dev/null | grep -E '^(core|gateway|parser|customer|search) (Exited|Dead)' >/dev/null; then
+    echo "ERROR: один из сервисов уже в Exited/Dead — прерываю ожидание health" >&2
+    ./scripts/health.sh >/tmp/zakupki-health.out 2>&1 || true
+    cat /tmp/zakupki-health.out || true
+    dump_failed_services
+    exit 1
+  fi
   if ./scripts/health.sh >/tmp/zakupki-health.out 2>&1; then
     ok=1
     break
@@ -326,8 +369,10 @@ echo
 cat /tmp/zakupki-health.out || true
 if [[ $ok -ne 1 ]]; then
   echo >&2
-  echo "WARN: health не зелёный. Статус/логи:" >&2
-  compose ps || true
+  echo "WARN: health не зелёный." >&2
+  dump_failed_services
+  echo >&2
+  echo "Полные логи (хвост):" >&2
   compose logs --tail=100 || true
   exit 1
 fi

@@ -4,13 +4,18 @@
 
 ## Запуск (один скрипт)
 
-Sibling-репозитории лежат рядом. `./up.sh` **сам** подтягивает их с ветки **`main`** (финальная), затем собирает и поднимает стек:
+Sibling-репозитории лежат рядом. `./up.sh` **сам** подтягивает их с ветки **`main`** (финальная), при необходимости накладывает локальные launch-патчи из `patches/`, затем собирает и поднимает стек:
 
 ```bash
+cd ~/Documents/work/platform/zakupki-platform
+git checkout main && git pull origin main
 ./up.sh
+./up.sh --health
 ```
 
 Нужны: **Docker Desktop** (или Engine), **Git**, **Go**. На Mac/Windows host-network не используется — UI будет на http://localhost:3000.
+
+Сейчас в `patches/` есть фикс panic `zakupki-core` (конфликт маршрутов Go ServeMux). Патч применяется локально поверх `origin/main` core; когда фикс попадёт в `zakupki-core@main`, скрипт это заметит и патч пропустит.
 
 Только синхронизировать репы с `main`:
 
