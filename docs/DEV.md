@@ -7,7 +7,7 @@
 ```bash
 cd /path/to/parent
 git clone https://github.com/rinat1313/zakupki-platform.git
-cd zakupki-platform && make clone-siblings
+cd zakupki-platform && make sync-siblings
 ```
 
 Итого:
@@ -19,8 +19,18 @@ parent/
   zakupki-gateway/
   zakupki-parser/
   zakupki-customer/
+  zakupki-search/
   analizator_zakupok/
 ```
+
+### Политика веток (обязательно для агентов и локального запуска)
+
+- Сборка платформы (`./up.sh`, Docker context) всегда берёт sibling-сервисы с **`origin/main`** — финальная ветка.
+- `make sync-siblings` / `./scripts/clone-siblings.sh` клонирует или `checkout`+`pull --ff-only` на `main`.
+- `./up.sh` вызывает sync сам (отключить: `--no-sync` или `ZAKUPKI_SKIP_SIBLING_SYNC=1`).
+- Фичи пишутся в `cursor/<name>-…` **внутри своего** репо сервиса; в platform для compose/up **не** подставлять feature-ветки siblings.
+- Override только явно: `SIBLING_BRANCH=...` (не использовать в обычном launch).
+- Cursor Cloud Environment: все sibling-репы в environment; ref для сборки/запуска платформы — **`main`**.
 
 Legacy-исследование ЕИС может оставаться в `ZakupkiParser` / `zakupkiparser` — runtime-путь уже через `zakupki-parser`.
 
@@ -33,14 +43,20 @@ Legacy-исследование ЕИС может оставаться в `Zakup
 
 ## Как вести разработку
 
+<<<<<<< HEAD
 1. Фича в одном сервисе → ветка `cursor/<name>-XXXX` только в его репо.
 2. Контракт (новый эндпоинт/событие) → обновить `zakupki-platform/contracts` (в т.ч. OpenAPI в `contracts/openapi/`) + README сервисов в том же PR-наборе. Просмотр: `make swagger`.
+=======
+1. Фича в одном сервисе → ветка `cursor/<name>-XXXX` только в его репо; в `main` мержить до запуска через platform.
+2. Контракт (новый эндпоинт/событие) → обновить `zakupki-platform/contracts` + README сервисов в том же PR-наборе.
+>>>>>>> origin/cursor/zakupki-search-launch-e414
 3. Миграции PG — только в `zakupki-platform/migrations` (не плодить init.sql в каждом сервисе).
 4. Локально без Docker: поднять postgres, затем `go run` в parser → core → gateway.
-5. Cursor Cloud Agent: добавить в environment репозитории  
+5. Cursor Cloud Agent: environment =  
    `zakupki-platform`, `zakupki-core`, `zakupki-gateway`, `zakupki-parser`,  
-   `zakupki-customer` (stub), `analizator_zakupok`.  
-   Legacy `zakupkiparser` — по желанию для фикстур HTML.
+   `zakupki-customer`, `zakupki-search`, `analizator_zakupok` — refs на **`main`**.  
+   `./up.sh` поднимает search, если sibling рядом
+   (`Dockerfile` + `cmd/search`, порт `:8093`, БД `zakupki_search`, `CORE_URL`→core).
 
 ## Минимальный smoke
 
@@ -66,11 +82,12 @@ cd zakupki-platform
 ```
 
 Скрипт сам:
-1. находит sibling-репозитории,
-2. собирает Go-бинарники,
-3. собирает Docker-образы,
-4. поднимает все контейнеры,
-5. проверяет health.
+1. синхронизирует siblings с `origin/main`,
+2. находит sibling-репозитории,
+3. собирает Go-бинарники,
+4. собирает Docker-образы,
+5. поднимает все контейнеры,
+6. проверяет health.
 
 Остановить: `./up.sh --down`.
 

@@ -23,6 +23,7 @@ fi
 MODE="default"
 NO_BUILD=0
 FROM_SOURCE=0
+NO_SYNC=0
 
 usage() {
   cat <<'USAGE'
@@ -37,8 +38,10 @@ Usage:
   ./up.sh --health     проверка health
   ./up.sh --from-source  собирать образы полным Dockerfile (без предсборки Go)
   ./up.sh --no-build   не пересобирать
+  ./up.sh --no-sync    не обновлять siblings с main перед сборкой
 
 Одного скрипта достаточно — сервисы и их Dockerfile поднимаются сами.
+Siblings всегда берутся с ветки main (SIBLING_BRANCH), если не указан --no-sync.
 USAGE
 }
 
@@ -51,6 +54,7 @@ while [[ $# -gt 0 ]]; do
     --health) MODE=health ;;
     --no-build) NO_BUILD=1 ;;
     --from-source) FROM_SOURCE=1 ;;
+    --no-sync) NO_SYNC=1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown arg: $1" >&2; usage; exit 1 ;;
   esac
@@ -58,6 +62,17 @@ while [[ $# -gt 0 ]]; do
 done
 
 PARENT="$(cd "$ROOT/.." && pwd)"
+
+# Политика: перед сборкой siblings = origin/main (финальная ветка сервисов).
+if [[ "$MODE" != "down" && "$MODE" != "logs" && "$MODE" != "health" ]]; then
+  if [[ "${ZAKUPKI_SKIP_SIBLING_SYNC:-0}" == "1" || "$NO_SYNC" == "1" ]]; then
+    echo "SKIP sibling sync (main)"
+  else
+    echo "→ sync siblings с origin/${SIBLING_BRANCH:-main}…"
+    "$ROOT/scripts/clone-siblings.sh"
+  fi
+fi
+
 resolve_repo() {
   local name="$1"
   local envvar="$2"
@@ -82,6 +97,7 @@ export PARSER_PATH="$(resolve_repo zakupki-parser PARSER_PATH)"
 export GATEWAY_PATH="$(resolve_repo zakupki-gateway GATEWAY_PATH)"
 export CUSTOMER_PATH="$(resolve_repo zakupki-customer CUSTOMER_PATH)"
 export ANALIZATOR_PATH="$(resolve_repo analizator_zakupok ANALIZATOR_PATH)"
+export SEARCH_PATH="$(resolve_repo zakupki-search SEARCH_PATH)"
 
 need_repos=(CORE_PATH PARSER_PATH GATEWAY_PATH CUSTOMER_PATH)
 if [[ "$MODE" == "ai" || "$MODE" == "full" ]]; then
@@ -101,10 +117,19 @@ done
 if [[ $missing -ne 0 ]]; then
   echo >&2
   echo "Ожидается рядом с zakupki-platform:" >&2
-  echo "  $PARENT/zakupki-{core,parser,gateway,customer}" >&2
+  echo "  $PARENT/zakupki-{core,parser,gateway,customer,search}" >&2
   echo "  $PARENT/analizator_zakupok   # для --ai" >&2
   echo "Или: ./scripts/clone-siblings.sh" >&2
   exit 1
+fi
+
+# zakupki-search: подключаем, если sibling уже есть (сервис ещё может писаться).
+ENABLE_SEARCH=0
+if [[ -n "${SEARCH_PATH:-}" && -d "$SEARCH_PATH" ]]; then
+  ENABLE_SEARCH=1
+  echo "OK  SEARCH_PATH = $SEARCH_PATH"
+else
+  echo "SKIP SEARCH_PATH (нет ../zakupki-search — поиск не поднимется)"
 fi
 
 if [[ ! -f .env && -f .env.example ]]; then
@@ -115,6 +140,9 @@ fi
 COMPOSE_FILES=(-f docker-compose.yml)
 if [[ $FROM_SOURCE -eq 0 ]]; then
   COMPOSE_FILES+=(-f docker-compose.runtime.yml)
+fi
+if [[ "${ENABLE_SEARCH:-0}" == "1" ]]; then
+  COMPOSE_FILES+=(-f docker-compose.search.yml)
 fi
 
 # Docker Desktop (macOS/Windows): обычный bridge + published ports.
@@ -134,60 +162,6 @@ fi
 
 compose() {
   "${COMPOSE[@]}" "${COMPOSE_FILES[@]}" "$@"
-}
-
-# Docker Compose: значения из текущего shell перекрывают файл .env.
-# Старый `export LM_STUDIO_BASE_URL=...:55674` как раз давал connection refused
-# при работающем LM Studio на :1234.
-ensure_lm_studio_env() {
-  local env_url="" env_key="" env_model=""
-  if [[ -f .env ]]; then
-    # читаем только нужные ключи (без source всего файла — безопаснее)
-    env_url="$(grep -E '^[[:space:]]*LM_STUDIO_BASE_URL=' .env | tail -1 | cut -d= -f2- | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")"
-    env_key="$(grep -E '^[[:space:]]*LM_STUDIO_API_KEY=' .env | tail -1 | cut -d= -f2- | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")"
-    env_model="$(grep -E '^[[:space:]]*LM_STUDIO_MODEL=' .env | tail -1 | cut -d= -f2- | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")"
-  fi
-
-  # Предпочитаем .env, затем уже export из shell, затем дефолт :1234
-  if [[ -n "$env_url" ]]; then
-    export LM_STUDIO_BASE_URL="$env_url"
-  fi
-  export LM_STUDIO_BASE_URL="${LM_STUDIO_BASE_URL:-http://host.docker.internal:1234/v1}"
-
-  if [[ -n "$env_key" ]]; then
-    export LM_STUDIO_API_KEY="$env_key"
-  fi
-  export LM_STUDIO_API_KEY="${LM_STUDIO_API_KEY:-lm-studio}"
-
-  if [[ -n "$env_model" ]]; then
-    export LM_STUDIO_MODEL="$env_model"
-  fi
-  export LM_STUDIO_MODEL="${LM_STUDIO_MODEL:-qwen/qwen3-8b}"
-
-  # Жёстко чиним застрявший порт 55674 (и любые не-1234, если ZAKUPKI_LM_FORCE_1234=1)
-  if [[ "$LM_STUDIO_BASE_URL" == *":55674"* ]]; then
-    echo "WARN: LM_STUDIO_BASE_URL содержит старый порт 55674 → принудительно :1234" >&2
-    export LM_STUDIO_BASE_URL="http://host.docker.internal:1234/v1"
-  fi
-  if [[ "${ZAKUPKI_LM_FORCE_1234:-1}" == "1" ]] && [[ "$LM_STUDIO_BASE_URL" != *":1234"* ]]; then
-    echo "WARN: LM_STUDIO_BASE_URL=$LM_STUDIO_BASE_URL не на :1234 → принудительно host.docker.internal:1234" >&2
-    echo "      (отключить автофикс: ZAKUPKI_LM_FORCE_1234=0)" >&2
-    export LM_STUDIO_BASE_URL="http://host.docker.internal:1234/v1"
-  fi
-
-  # Синхронизируем .env, чтобы следующий запуск и UI-доки совпадали
-  if [[ -f .env ]]; then
-    tmp="$(mktemp)"
-    grep -v -E '^[[:space:]]*LM_STUDIO_(BASE_URL|API_KEY|MODEL)=' .env >"$tmp" || true
-    {
-      echo "LM_STUDIO_BASE_URL=$LM_STUDIO_BASE_URL"
-      echo "LM_STUDIO_API_KEY=$LM_STUDIO_API_KEY"
-      echo "LM_STUDIO_MODEL=$LM_STUDIO_MODEL"
-    } >>"$tmp"
-    mv "$tmp" .env
-  fi
-
-  echo "OK  LM Studio → $LM_STUDIO_BASE_URL  model=$LM_STUDIO_MODEL"
 }
 
 # Архитектура Linux-контейнеров Docker (не хоста macOS!).
@@ -227,6 +201,18 @@ prep_bins() {
       exit 1
     fi
   fi
+  if [[ "${ENABLE_SEARCH:-0}" == "1" ]]; then
+    # search собирается полным Dockerfile в образе (миграции + binary).
+    if [[ ! -f "$SEARCH_PATH/Dockerfile" ]]; then
+      echo "ERROR: нет Dockerfile в $SEARCH_PATH" >&2
+      exit 1
+    fi
+    if [[ ! -d "$SEARCH_PATH/cmd/search" ]]; then
+      echo "ERROR: ожидается $SEARCH_PATH/cmd/search" >&2
+      exit 1
+    fi
+    echo "OK  search → Docker multi-stage (Dockerfile), HTTP :8093, DB zakupki_search"
+  fi
   # ensure runtime dockerfiles exist
   for pair in \
     "$CORE_PATH:core" \
@@ -249,7 +235,8 @@ prep_bins() {
 
 case "$MODE" in
   down)
-    "${COMPOSE[@]}" -f docker-compose.yml --profile ai --profile redis --profile kafka down
+    down_files=(-f docker-compose.yml -f docker-compose.search.yml)
+    "${COMPOSE[@]}" "${down_files[@]}" --profile ai --profile redis --profile kafka down
     echo "stopped"
     exit 0
     ;;
@@ -261,11 +248,18 @@ case "$MODE" in
     ;;
 esac
 
+# Wiring: core → analizator в docker-сети. LM/промпты/dose — дефолты самого контейнера.
 if [[ "$MODE" == "ai" || "$MODE" == "full" ]]; then
   export ANALIZATOR_URL="${ANALIZATOR_URL:-http://analizator:8088}"
-  # Compose: переменные из shell ПЕРЕБИВАЮТ .env — из‑за старого
-  # `export LM_STUDIO_BASE_URL=...:55674` контейнер продолжал ходить не туда.
-  ensure_lm_studio_env
+fi
+# Wiring: search → core (sync тендеров). Gateway search пока не проксирует.
+if [[ "${ENABLE_SEARCH:-0}" == "1" ]]; then
+  if [[ "${ZAKUPKI_HOST_NET:-0}" == "1" ]]; then
+    export CORE_URL="${CORE_URL:-http://127.0.0.1:8080}"
+  else
+    export CORE_URL="${CORE_URL:-http://core:8080}"
+  fi
+  echo "OK  search CORE_URL = $CORE_URL  (HTTP :8093)"
 fi
 
 profiles=()
@@ -279,20 +273,40 @@ fi
 up_args=(up -d --remove-orphans)
 [[ $NO_BUILD -eq 0 ]] && up_args+=(--build)
 
+# БД search на уже существующем volume init-скрипт не пересоздаст — гарантируем до старта search.
+ensure_search_db() {
+  [[ "${ENABLE_SEARCH:-0}" == "1" ]] || return 0
+  echo "→ ensure database zakupki_search…"
+  local i
+  for i in $(seq 1 30); do
+    if compose exec -T postgres pg_isready -U zakupki >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+  if compose exec -T postgres psql -U zakupki -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='zakupki_search'" 2>/dev/null | grep -q 1; then
+    echo "OK  database zakupki_search exists"
+    return 0
+  fi
+  if compose exec -T postgres psql -U zakupki -d postgres -c "CREATE DATABASE zakupki_search OWNER zakupki;" >/dev/null 2>&1; then
+    echo "OK  created database zakupki_search"
+    return 0
+  fi
+  echo "WARN: не удалось создать zakupki_search — search может не стартовать" >&2
+}
+
 echo
 echo "→ поднимаю контейнеры ($MODE)…"
 # Без Progress=tty на Mac иногда кажется, что зависло на "up 2/3" (особенно build analizator).
 export BUILDKIT_PROGRESS="${BUILDKIT_PROGRESS:-plain}"
+if [[ "${ENABLE_SEARCH:-0}" == "1" ]]; then
+  compose up -d postgres
+  ensure_search_db
+fi
 if [[ ${#profiles[@]} -gt 0 ]]; then
   compose "${profiles[@]}" "${up_args[@]}"
 else
   compose "${up_args[@]}"
-fi
-
-# Отдельно пересоздаём analizator с актуальным LM_STUDIO_* (shell больше не перекрывает .env)
-if [[ "$MODE" == "ai" || "$MODE" == "full" ]]; then
-  echo "→ force-recreate analizator (LM_STUDIO_BASE_URL=$LM_STUDIO_BASE_URL)…"
-  compose --profile ai up -d --force-recreate --no-deps analizator
 fi
 
 echo
@@ -324,6 +338,9 @@ echo "  UI:       http://localhost:3000"
 echo "  Core API: http://localhost:8080/api/v1/health"
 echo "  Parser:   http://localhost:8091/health"
 echo "  Customer: http://localhost:8092/health"
+if [[ "${ENABLE_SEARCH:-0}" == "1" ]]; then
+  echo "  Search:   http://localhost:8093/health"
+fi
 if [[ "$MODE" == "ai" || "$MODE" == "full" ]]; then
   echo "  Analizator: http://localhost:8088/health"
 fi

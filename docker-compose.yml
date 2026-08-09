@@ -7,6 +7,7 @@
 #     zakupki-gateway/
 #     zakupki-parser/
 #     zakupki-customer/
+#     zakupki-search/     ← опционально; подключается через docker-compose.search.yml
 #     analizator_zakupok/
 #
 # Запуск:
@@ -26,6 +27,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./migrations/000_create_search_db.sql:/docker-entrypoint-initdb.d/00_create_search_db.sql:ro
       - ./migrations/001_init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U zakupki -d zakupki"]
@@ -115,21 +117,10 @@ services:
     profiles: ["ai"]
     build:
       context: ${ANALIZATOR_PATH:-../analizator_zakupok}
+    # Только wiring Docker. LM Studio / dose / checklist — дефолты образа и configs/ в репо analizator.
     environment:
       HTTP_ADDR: ":8088"
       TENDERS_ROOT: /data/tenders
-      CHECKLISTS_DIR: /app/configs/checklists
-      PROMPTS_DIR: /app/configs/prompts
-      DEFAULT_CHECKLIST: ${DEFAULT_CHECKLIST:-default}
-      PAGE_CHARS: ${PAGE_CHARS:-1800}
-      DOSE_PAGES: ${DOSE_PAGES:-5}
-      CONTEXT_BUDGET_CHARS: ${CONTEXT_BUDGET_CHARS:-10000}
-      DOSE_MAX_TOKENS: ${DOSE_MAX_TOKENS:-1600}
-      SYNTH_MAX_TOKENS: ${SYNTH_MAX_TOKENS:-2000}
-      LM_STUDIO_BASE_URL: ${LM_STUDIO_BASE_URL:-http://host.docker.internal:1234/v1}
-      LM_STUDIO_API_KEY: ${LM_STUDIO_API_KEY:-lm-studio}
-      LM_STUDIO_MODEL: ${LM_STUDIO_MODEL:-local-model}
-      LM_STUDIO_ENDPOINTS_FILE: ${LM_STUDIO_ENDPOINTS_FILE:-/app/configs/lm_studio.yaml}
     ports:
       - "8088:8088"
     extra_hosts:

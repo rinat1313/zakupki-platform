@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 .PHONY: up up-ai up-full down logs health clone-siblings swagger
+=======
+.PHONY: up up-ai up-full down logs health clone-siblings sync-siblings
+>>>>>>> origin/cursor/zakupki-search-launch-e414
 
 up:
 	./up.sh
@@ -18,7 +22,8 @@ logs:
 health:
 	./up.sh --health
 
-clone-siblings:
+# Клон/обновление всех sibling-реп с origin/main (финальная ветка).
+clone-siblings sync-siblings:
 	@./scripts/clone-siblings.sh
 
 # Swagger UI for contracts/openapi/openapi.yaml → http://localhost:8081
