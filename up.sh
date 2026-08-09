@@ -136,60 +136,6 @@ compose() {
   "${COMPOSE[@]}" "${COMPOSE_FILES[@]}" "$@"
 }
 
-# Docker Compose: значения из текущего shell перекрывают файл .env.
-# Старый `export LM_STUDIO_BASE_URL=...:55674` как раз давал connection refused
-# при работающем LM Studio на :1234.
-ensure_lm_studio_env() {
-  local env_url="" env_key="" env_model=""
-  if [[ -f .env ]]; then
-    # читаем только нужные ключи (без source всего файла — безопаснее)
-    env_url="$(grep -E '^[[:space:]]*LM_STUDIO_BASE_URL=' .env | tail -1 | cut -d= -f2- | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")"
-    env_key="$(grep -E '^[[:space:]]*LM_STUDIO_API_KEY=' .env | tail -1 | cut -d= -f2- | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")"
-    env_model="$(grep -E '^[[:space:]]*LM_STUDIO_MODEL=' .env | tail -1 | cut -d= -f2- | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")"
-  fi
-
-  # Предпочитаем .env, затем уже export из shell, затем дефолт :1234
-  if [[ -n "$env_url" ]]; then
-    export LM_STUDIO_BASE_URL="$env_url"
-  fi
-  export LM_STUDIO_BASE_URL="${LM_STUDIO_BASE_URL:-http://host.docker.internal:1234/v1}"
-
-  if [[ -n "$env_key" ]]; then
-    export LM_STUDIO_API_KEY="$env_key"
-  fi
-  export LM_STUDIO_API_KEY="${LM_STUDIO_API_KEY:-lm-studio}"
-
-  if [[ -n "$env_model" ]]; then
-    export LM_STUDIO_MODEL="$env_model"
-  fi
-  export LM_STUDIO_MODEL="${LM_STUDIO_MODEL:-qwen/qwen3-8b}"
-
-  # Жёстко чиним застрявший порт 55674 (и любые не-1234, если ZAKUPKI_LM_FORCE_1234=1)
-  if [[ "$LM_STUDIO_BASE_URL" == *":55674"* ]]; then
-    echo "WARN: LM_STUDIO_BASE_URL содержит старый порт 55674 → принудительно :1234" >&2
-    export LM_STUDIO_BASE_URL="http://host.docker.internal:1234/v1"
-  fi
-  if [[ "${ZAKUPKI_LM_FORCE_1234:-1}" == "1" ]] && [[ "$LM_STUDIO_BASE_URL" != *":1234"* ]]; then
-    echo "WARN: LM_STUDIO_BASE_URL=$LM_STUDIO_BASE_URL не на :1234 → принудительно host.docker.internal:1234" >&2
-    echo "      (отключить автофикс: ZAKUPKI_LM_FORCE_1234=0)" >&2
-    export LM_STUDIO_BASE_URL="http://host.docker.internal:1234/v1"
-  fi
-
-  # Синхронизируем .env, чтобы следующий запуск и UI-доки совпадали
-  if [[ -f .env ]]; then
-    tmp="$(mktemp)"
-    grep -v -E '^[[:space:]]*LM_STUDIO_(BASE_URL|API_KEY|MODEL)=' .env >"$tmp" || true
-    {
-      echo "LM_STUDIO_BASE_URL=$LM_STUDIO_BASE_URL"
-      echo "LM_STUDIO_API_KEY=$LM_STUDIO_API_KEY"
-      echo "LM_STUDIO_MODEL=$LM_STUDIO_MODEL"
-    } >>"$tmp"
-    mv "$tmp" .env
-  fi
-
-  echo "OK  LM Studio → $LM_STUDIO_BASE_URL  model=$LM_STUDIO_MODEL"
-}
-
 # Архитектура Linux-контейнеров Docker (не хоста macOS!).
 docker_go_arch() {
   local arch
@@ -261,11 +207,9 @@ case "$MODE" in
     ;;
 esac
 
+# Wiring: core → analizator в docker-сети. LM/промпты/dose — дефолты самого контейнера.
 if [[ "$MODE" == "ai" || "$MODE" == "full" ]]; then
   export ANALIZATOR_URL="${ANALIZATOR_URL:-http://analizator:8088}"
-  # Compose: переменные из shell ПЕРЕБИВАЮТ .env — из‑за старого
-  # `export LM_STUDIO_BASE_URL=...:55674` контейнер продолжал ходить не туда.
-  ensure_lm_studio_env
 fi
 
 profiles=()
@@ -287,12 +231,6 @@ if [[ ${#profiles[@]} -gt 0 ]]; then
   compose "${profiles[@]}" "${up_args[@]}"
 else
   compose "${up_args[@]}"
-fi
-
-# Отдельно пересоздаём analizator с актуальным LM_STUDIO_* (shell больше не перекрывает .env)
-if [[ "$MODE" == "ai" || "$MODE" == "full" ]]; then
-  echo "→ force-recreate analizator (LM_STUDIO_BASE_URL=$LM_STUDIO_BASE_URL)…"
-  compose --profile ai up -d --force-recreate --no-deps analizator
 fi
 
 echo

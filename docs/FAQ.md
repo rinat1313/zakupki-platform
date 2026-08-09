@@ -15,68 +15,42 @@ git pull origin main
 
 Затем в UI откройте закупку → **«Обновить карточку»** (старые документы уже сохранены как unprocessed и сами не переконвертируются).
 
-## AI-анализ: `analizator disabled` / `connection refused` / порт 55674
+## AI-анализ: `analizator disabled` / `connection refused`
 
-**Важно:** Docker берёт порт из файла `zakupki-platform/.env`, а не из «воздуха».
-Если в ошибке фигурирует `:55674` — в `.env` **или в терминале** (`export LM_STUDIO_…`) застрял старый порт.
-Docker Compose приоритетнее берёт переменные из **shell**, чем из `.env` — поэтому старый `export …:55674` ломал всё даже при правильном `.env`.
+`zakupki-platform` **не** перезаписывает LM/dose-конфиг. Настройки — в образе и `configs/` репозитория `analizator_zakupok` (или ENV, заданные в его Dockerfile).
 
-`./up.sh --ai` теперь:
-- читает `.env` и **перезаписывает** shell;
-- принудительно чинит порт `55674` → `1234`;
-- делает `force-recreate` контейнера `analizator`.
-
-LM Studio сейчас слушает **1234** — исправьте `.env` и пересоздайте контейнеры. Перед запуском можно сбросить старый export:
-
-```bash
-unset LM_STUDIO_BASE_URL LM_STUDIO_API_KEY LM_STUDIO_MODEL
-```
+`./up.sh --ai` только поднимает контейнер и выставляет wiring `ANALIZATOR_URL` для core.
 
 ### 1. LM Studio на Mac
 
 - модель загружена, Server → Start
-- порт **1234** (лог: `HTTP server listening on port 1234`)
+- порт как в конфиге analizator (часто **1234**)
 - желательно **Serve on Local Network** / bind `0.0.0.0`
 
-Проверка (каждая команда — отдельная строка, без комментариев справа):
+Проверка:
 
 ```bash
 curl http://127.0.0.1:1234/v1/models
 ```
 
-Из ответа скопируйте `"id"` модели.
-
-### 2. Файл настроек (главное место)
-
-Откройте:
+### 2. Где править настройки
 
 ```text
-zakupki-platform/.env
+analizator_zakupok/configs/          # lm_studio.yaml, checklists, prompts
+analizator_zakupok/Dockerfile*       # ENV по умолчанию в образе
 ```
 
-Должно быть **ровно** так (подставьте свой id модели):
-
-```bash
-LM_STUDIO_BASE_URL=http://host.docker.internal:1234/v1
-LM_STUDIO_API_KEY=lm-studio
-LM_STUDIO_MODEL=qwen/qwen3-8b
-```
-
-Не оставляйте `55674` и другие старые порты. После правки:
-
-```bash
-unset LM_STUDIO_BASE_URL LM_STUDIO_API_KEY LM_STUDIO_MODEL
-```
+Не задавайте `LM_STUDIO_*` / `PAGE_CHARS` / `DOSE_*` в `zakupki-platform/.env` «на всякий случай» — compose их больше не форсит, а старый `export` в shell может всё ещё попасть в контейнер, если вы сами пробросите переменную.
 
 ### 3. Перезапуск стека с AI
 
 ```bash
-cd /Users/rinat/Documents/work/platform/zakupki-platform
+cd /path/to/zakupki-platform
 ./up.sh --down
 ./up.sh --ai
 ```
 
-### 4. Проверка (по одной команде)
+### 4. Проверка
 
 ```bash
 curl http://127.0.0.1:1234/v1/models
@@ -84,7 +58,6 @@ curl http://127.0.0.1:8088/health
 curl http://127.0.0.1:8080/api/v1/health
 ```
 
-В `8088/health` в `lm_studio_error` **не** должно быть `:55674`.
 В `8080/health` ожидайте `"analizator":"ok"`.
 
 ### 5. UI
@@ -93,25 +66,17 @@ http://localhost:3000 → закупка → **AI-анализ**.
 
 ## AI-анализ дозированный (самозанятый)
 
-Анализатор больше не отправляет весь текст разом (из‑за этого был `Context size has been exceeded`).
+Анализатор не отправляет весь текст разом (иначе `Context size has been exceeded`).
 
 Алгоритм:
-1. режет документы на «страницы» (~1800 символов) и шлёт порциями по ~5 страниц;
-2. на каждую порцию модель даёт **краткие заметки** (ей сообщают, что будут ещё части);
-3. если порция не влезает в контекст — автоматически уменьшает её и повторяет;
-4. в конце собирает итоговый ответ на вопрос: **«Оцени закупку по возможности участия самозанятого»**.
+1. режет документы на «страницы» и шлёт порциями;
+2. на каждую порцию модель даёт **краткие заметки**;
+3. если порция не влезает в контекст — уменьшает её и повторяет;
+4. в конце собирает итоговую оценку (например, участие самозанятого).
 
-Настройки (в `zakupki-platform/.env` или compose):
+Параметры dose (`PAGE_CHARS`, `DOSE_PAGES`, `CONTEXT_BUDGET_CHARS`, …) живут в **analizator_zakupok**, не в platform compose.
 
-```bash
-PAGE_CHARS=1800
-DOSE_PAGES=5
-CONTEXT_BUDGET_CHARS=10000
-DOSE_MAX_TOKENS=400
-SYNTH_MAX_TOKENS=900
-```
-
-Если снова `Context size exceeded` — уменьшите `CONTEXT_BUDGET_CHARS` (например `6000`) или увеличьте n_ctx в LM Studio.
+Если снова `Context size exceeded` — уменьшите бюджет в конфиге analizator или увеличьте n_ctx в LM Studio.
 
 ## AI вернул unknown / пустые заметки при наличии документов
 
@@ -205,34 +170,33 @@ curl -X POST http://127.0.0.1:8080/api/v1/categories/MYKEY/ai-configs \
 
 ## LM Studio: Docker всё ещё не достучится (Mac)
 
-Если после правки `.env` на `:1234` всё равно `connection refused`:
-
 1. В LM Studio включите **Serve on Local Network** / `0.0.0.0`
-2. Либо запускайте analizator на хосте (см. ниже)
+2. Проверьте URL/модель в конфиге **analizator_zakupok** (не в platform)
+3. Либо запускайте analizator на хосте (см. ниже)
 
 ### Надёжный вариант на Mac (analizator на хосте)
 
 ```bash
 # терминал 1 — стек без AI-контейнера
-cd /Users/rinat/Documents/work/platform/zakupki-platform
+cd /path/to/zakupki-platform
 ./up.sh
 
-# терминал 2 — analizator на Mac, прямо к LM Studio
-cd /Users/rinat/Documents/work/platform/analizator_zakupok
+# терминал 2 — analizator на Mac со своими ENV/config
+cd /path/to/analizator_zakupok
 export LM_STUDIO_BASE_URL=http://127.0.0.1:1234/v1
 export LM_STUDIO_API_KEY=lm-studio
-export LM_STUDIO_MODEL=Qwen3-8B-Q8_0
+export LM_STUDIO_MODEL=<id из /v1/models>
 export HTTP_ADDR=:8088
 export TENDERS_ROOT=/tmp/tenders
 go run ./cmd/analizator
 ```
 
-И чтобы core в Docker звал этот analizator:
+Чтобы core в Docker звал этот analizator:
 
 ```bash
-cd /Users/rinat/Documents/work/platform/zakupki-platform
-export ANALIZATOR_URL=http://host.docker.internal:8088
-docker compose -f docker-compose.yml -f docker-compose.runtime.yml up -d --force-recreate core
+cd /path/to/zakupki-platform
+ANALIZATOR_URL=http://host.docker.internal:8088 \
+  docker compose -f docker-compose.yml -f docker-compose.runtime.yml up -d --force-recreate core
 ```
 
 В UI снова нажмите **AI-анализ**.
