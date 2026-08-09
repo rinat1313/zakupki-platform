@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-.PHONY: up up-ai up-full down logs health clone-siblings swagger
-=======
-.PHONY: up up-ai up-full down logs health clone-siblings sync-siblings
->>>>>>> origin/cursor/zakupki-search-launch-e414
+.PHONY: up up-ai up-full down logs health clone-siblings sync-siblings swagger
 
 up:
 	./up.sh
