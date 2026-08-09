@@ -62,19 +62,14 @@ while [[ $# -gt 0 ]]; do
 done
 
 PARENT="$(cd "$ROOT/.." && pwd)"
-export ZAKUPKI_PARENT="$PARENT"
 
 # Политика: перед сборкой siblings = origin/main (финальная ветка сервисов).
 if [[ "$MODE" != "down" && "$MODE" != "logs" && "$MODE" != "health" ]]; then
   if [[ "${ZAKUPKI_SKIP_SIBLING_SYNC:-0}" == "1" || "$NO_SYNC" == "1" ]]; then
     echo "SKIP sibling sync (main)"
-    # Без sync не делаем hard-reset sibling — только пробуем наложить патч, если применим.
-    ZAKUPKI_PATCH_FORCE_RESET=0 "$ROOT/scripts/apply-sibling-patches.sh" || true
   else
     echo "→ sync siblings с origin/${SIBLING_BRANCH:-main}…"
     "$ROOT/scripts/clone-siblings.sh"
-    # Локальные launch-патчи (пока нет push в sibling / фикс не в main).
-    "$ROOT/scripts/apply-sibling-patches.sh"
   fi
 fi
 
