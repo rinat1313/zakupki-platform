@@ -15,6 +15,7 @@ services:
       DATABASE_URL: postgres://zakupki:zakupki@127.0.0.1:5432/zakupki?sslmode=disable
       PARSER_URL: http://127.0.0.1:8091
       ANALIZATOR_URL: ${ANALIZATOR_URL:-}
+      SEARCH_URL: ${SEARCH_URL:-http://127.0.0.1:8093}
       INGEST_WORKERS: ${INGEST_WORKERS:-3}
     depends_on:
       postgres:
@@ -29,6 +30,7 @@ services:
       HTTP_ADDR: ":3000"
       CORE_URL: http://127.0.0.1:8080
       CUSTOMER_URL: http://127.0.0.1:8092
+      SEARCH_URL: ${SEARCH_URL:-http://127.0.0.1:8093}
       UI_DIR: /app/ui
     depends_on:
       - core
@@ -38,3 +40,8 @@ services:
     environment:
       HTTP_ADDR: ":8088"
       TENDERS_ROOT: /data/tenders
+  search:
+    network_mode: host
+    environment:
+      HTTP_ADDR: ":8093"
+      DATABASE_URL: postgres://zakupki:zakupki@127.0.0.1:5432/zakupki?sslmode=disable

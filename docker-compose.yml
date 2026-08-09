@@ -7,6 +7,7 @@
 #     zakupki-gateway/
 #     zakupki-parser/
 #     zakupki-customer/
+#     zakupki-search/     ← опционально; подключается через docker-compose.search.yml
 #     analizator_zakupok/
 #
 # Запуск:

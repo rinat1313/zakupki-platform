@@ -19,6 +19,7 @@ parent/
   zakupki-gateway/
   zakupki-parser/
   zakupki-customer/
+  zakupki-search/
   analizator_zakupok/
 ```
 
@@ -39,8 +40,10 @@ Legacy-исследование ЕИС может оставаться в `Zakup
 4. Локально без Docker: поднять postgres, затем `go run` в parser → core → gateway.
 5. Cursor Cloud Agent: добавить в environment репозитории  
    `zakupki-platform`, `zakupki-core`, `zakupki-gateway`, `zakupki-parser`,  
-   `zakupki-customer` (stub), `analizator_zakupok`.  
+   `zakupki-customer` (stub), `zakupki-search`, `analizator_zakupok`.  
    Legacy `zakupkiparser` — по желанию для фикстур HTML.
+   `./up.sh` поднимает search автоматически, если sibling `zakupki-search` рядом
+   (нужны `Dockerfile.runtime` и Go main в `cmd/search` или `cmd/service`).
 
 ## Минимальный smoke
 

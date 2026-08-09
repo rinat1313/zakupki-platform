@@ -82,6 +82,7 @@ export PARSER_PATH="$(resolve_repo zakupki-parser PARSER_PATH)"
 export GATEWAY_PATH="$(resolve_repo zakupki-gateway GATEWAY_PATH)"
 export CUSTOMER_PATH="$(resolve_repo zakupki-customer CUSTOMER_PATH)"
 export ANALIZATOR_PATH="$(resolve_repo analizator_zakupok ANALIZATOR_PATH)"
+export SEARCH_PATH="$(resolve_repo zakupki-search SEARCH_PATH)"
 
 need_repos=(CORE_PATH PARSER_PATH GATEWAY_PATH CUSTOMER_PATH)
 if [[ "$MODE" == "ai" || "$MODE" == "full" ]]; then
@@ -101,10 +102,19 @@ done
 if [[ $missing -ne 0 ]]; then
   echo >&2
   echo "Ожидается рядом с zakupki-platform:" >&2
-  echo "  $PARENT/zakupki-{core,parser,gateway,customer}" >&2
+  echo "  $PARENT/zakupki-{core,parser,gateway,customer,search}" >&2
   echo "  $PARENT/analizator_zakupok   # для --ai" >&2
   echo "Или: ./scripts/clone-siblings.sh" >&2
   exit 1
+fi
+
+# zakupki-search: подключаем, если sibling уже есть (сервис ещё может писаться).
+ENABLE_SEARCH=0
+if [[ -n "${SEARCH_PATH:-}" && -d "$SEARCH_PATH" ]]; then
+  ENABLE_SEARCH=1
+  echo "OK  SEARCH_PATH = $SEARCH_PATH"
+else
+  echo "SKIP SEARCH_PATH (нет ../zakupki-search — поиск не поднимется)"
 fi
 
 if [[ ! -f .env && -f .env.example ]]; then
@@ -115,6 +125,9 @@ fi
 COMPOSE_FILES=(-f docker-compose.yml)
 if [[ $FROM_SOURCE -eq 0 ]]; then
   COMPOSE_FILES+=(-f docker-compose.runtime.yml)
+fi
+if [[ "${ENABLE_SEARCH:-0}" == "1" ]]; then
+  COMPOSE_FILES+=(-f docker-compose.search.yml)
 fi
 
 # Docker Desktop (macOS/Windows): обычный bridge + published ports.
@@ -134,6 +147,28 @@ fi
 
 compose() {
   "${COMPOSE[@]}" "${COMPOSE_FILES[@]}" "$@"
+}
+
+# Ищем Go main в sibling-репо (cmd/search | cmd/service | первый cmd/*).
+resolve_go_main() {
+  local path="$1"
+  local c d
+  for c in cmd/search cmd/service cmd/zakupki-search; do
+    if [[ -f "$path/$c/main.go" ]] || compgen -G "$path/$c/*.go" >/dev/null 2>&1; then
+      echo "./$c"
+      return 0
+    fi
+  done
+  if [[ -d "$path/cmd" ]]; then
+    for d in "$path"/cmd/*; do
+      [[ -d "$d" ]] || continue
+      if compgen -G "$d/*.go" >/dev/null 2>&1; then
+        echo "./cmd/$(basename "$d")"
+        return 0
+      fi
+    done
+  fi
+  return 1
 }
 
 # Архитектура Linux-контейнеров Docker (не хоста macOS!).
@@ -173,6 +208,20 @@ prep_bins() {
       exit 1
     fi
   fi
+  if [[ "${ENABLE_SEARCH:-0}" == "1" ]]; then
+    local search_pkg
+    search_pkg="$(resolve_go_main "$SEARCH_PATH")" || {
+      echo "ERROR: в $SEARCH_PATH нет Go main (ожидается cmd/search или cmd/service)" >&2
+      exit 1
+    }
+    mkdir -p "$SEARCH_PATH/bin"
+    echo "OK  search package = $search_pkg"
+    (cd "$SEARCH_PATH" && CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -o bin/search "$search_pkg")
+    if [[ ! -f "$SEARCH_PATH/Dockerfile.runtime" ]]; then
+      echo "ERROR: нет Dockerfile.runtime в $SEARCH_PATH" >&2
+      exit 1
+    fi
+  fi
   # ensure runtime dockerfiles exist
   for pair in \
     "$CORE_PATH:core" \
@@ -195,7 +244,8 @@ prep_bins() {
 
 case "$MODE" in
   down)
-    "${COMPOSE[@]}" -f docker-compose.yml --profile ai --profile redis --profile kafka down
+    down_files=(-f docker-compose.yml -f docker-compose.search.yml)
+    "${COMPOSE[@]}" "${down_files[@]}" --profile ai --profile redis --profile kafka down
     echo "stopped"
     exit 0
     ;;
@@ -210,6 +260,15 @@ esac
 # Wiring: core → analizator в docker-сети. LM/промпты/dose — дефолты самого контейнера.
 if [[ "$MODE" == "ai" || "$MODE" == "full" ]]; then
   export ANALIZATOR_URL="${ANALIZATOR_URL:-http://analizator:8088}"
+fi
+# Wiring: gateway/core могут ходить в search (если сервис поднят).
+if [[ "${ENABLE_SEARCH:-0}" == "1" ]]; then
+  if [[ "${ZAKUPKI_HOST_NET:-0}" == "1" ]]; then
+    export SEARCH_URL="${SEARCH_URL:-http://127.0.0.1:8093}"
+  else
+    export SEARCH_URL="${SEARCH_URL:-http://search:8093}"
+  fi
+  echo "OK  SEARCH_URL = $SEARCH_URL"
 fi
 
 profiles=()
@@ -262,6 +321,9 @@ echo "  UI:       http://localhost:3000"
 echo "  Core API: http://localhost:8080/api/v1/health"
 echo "  Parser:   http://localhost:8091/health"
 echo "  Customer: http://localhost:8092/health"
+if [[ "${ENABLE_SEARCH:-0}" == "1" ]]; then
+  echo "  Search:   http://localhost:8093/health"
+fi
 if [[ "$MODE" == "ai" || "$MODE" == "full" ]]; then
   echo "  Analizator: http://localhost:8088/health"
 fi

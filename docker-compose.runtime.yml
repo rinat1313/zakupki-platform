@@ -21,3 +21,7 @@ services:
     build:
       context: ${ANALIZATOR_PATH:-../analizator_zakupok}
       dockerfile: Dockerfile.runtime
+  search:
+    build:
+      context: ${SEARCH_PATH:-../zakupki-search}
+      dockerfile: Dockerfile.runtime
