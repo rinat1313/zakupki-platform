@@ -248,11 +248,15 @@ case "$MODE" in
     ;;
 esac
 
-# Wiring: core → analizator в docker-сети. LM/промпты/dose — дефолты самого контейнера.
 if [[ "$MODE" == "ai" || "$MODE" == "full" ]]; then
-  export ANALIZATOR_URL="${ANALIZATOR_URL:-http://analizator:8088}"
+  if [[ "${ZAKUPKI_HOST_NET:-0}" == "1" ]]; then
+    export ANALIZATOR_URL="${ANALIZATOR_URL:-http://127.0.0.1:8088}"
+  else
+    export ANALIZATOR_URL="${ANALIZATOR_URL:-http://analizator:8088}"
+  fi
+  echo "OK  ANALIZATOR_URL = $ANALIZATOR_URL"
 fi
-# Wiring: search → core (sync); SEARCH_URL для gateway задаётся в docker-compose.search.yml.
+
 if [[ "${ENABLE_SEARCH:-0}" == "1" ]]; then
   if [[ "${ZAKUPKI_HOST_NET:-0}" == "1" ]]; then
     export CORE_URL="${CORE_URL:-http://127.0.0.1:8080}"
@@ -332,6 +336,30 @@ if [[ $ok -ne 1 ]]; then
   exit 1
 fi
 
+if [[ "$MODE" == "ai" || "$MODE" == "full" ]]; then
+  echo
+  echo "→ проверяю AI-анализатор…"
+  if ! curl -fsS http://127.0.0.1:8088/health >/dev/null 2>&1; then
+    echo "ERROR: analizator не отвечает на http://127.0.0.1:8088/health" >&2
+    compose ps -a || true
+    compose logs --tail=120 analizator || true
+    exit 1
+  fi
+  echo "OK  analizator http://127.0.0.1:8088/health"
+  core_h="$(curl -fsS http://127.0.0.1:8080/api/v1/health 2>/dev/null || true)"
+  if echo "$core_h" | grep -q '"analizator":"ok"'; then
+    echo "OK  core → analizator (ANALIZATOR_URL=$ANALIZATOR_URL)"
+  elif echo "$core_h" | grep -q '"analizator":"disabled"'; then
+    echo "ERROR: core видит analizator=disabled — ANALIZATOR_URL не дошёл до core" >&2
+    echo "       ANALIZATOR_URL=$ANALIZATOR_URL" >&2
+    echo "       проверьте .env (пустой ANALIZATOR_URL= ломает wiring)" >&2
+    compose logs --tail=40 core || true
+    exit 1
+  else
+    echo "WARN: core health: $core_h" >&2
+  fi
+fi
+
 echo
 echo "Готово."
 echo "  UI:       http://localhost:3000"
@@ -343,6 +371,7 @@ if [[ "${ENABLE_SEARCH:-0}" == "1" ]]; then
 fi
 if [[ "$MODE" == "ai" || "$MODE" == "full" ]]; then
   echo "  Analizator: http://localhost:8088/health"
+  echo "  Core→AI:    ANALIZATOR_URL=$ANALIZATOR_URL"
 fi
 echo
 echo "Остановить: ./up.sh --down"
