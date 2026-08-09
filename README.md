@@ -31,6 +31,7 @@
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md) — схема сервисов
 - [DEV.md](docs/DEV.md) — как вести разработку и что добавить агенту
 - [API.md](docs/API.md) — HTTP API (через gateway → core)
+- [OpenAPI / Swagger](contracts/openapi/) — машиночитаемые контракты (`make swagger` → http://localhost:8081)
 - [kafka/topics.yml](kafka/topics.yml) — целевые события
 
 ## Сервисы

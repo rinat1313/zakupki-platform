@@ -3,6 +3,8 @@
 Base URL (local): `http://localhost:8080/api/v1`  
 UI proxy: `http://localhost:3000/api/v1`
 
+**OpenAPI / Swagger:** [`contracts/openapi/openapi.yaml`](../contracts/openapi/openapi.yaml) — `make swagger` → http://localhost:8081
+
 Auth: none (local / private network).
 
 Env:
@@ -50,6 +52,8 @@ If ЕИС is unreachable or the number is not an EIS notice, the item ends as `u
 
 ## Endpoints
 
+Полная схема (параметры, тела, ответы) — в OpenAPI. Краткий список:
+
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | `/health` | `{ status, analizator }` |
@@ -58,6 +62,9 @@ If ЕИС is unreachable or the number is not an EIS notice, the item ends as `u
 | DELETE | `/categories/{slug}/tenders` | очистить закупки категории |
 | DELETE | `/categories/{slug}/jobs` | очистить ingest-jobs |
 | POST | `/categories/{slug}/refresh` | `{ statuses: ["none",…] }` → новый job |
+| GET/POST | `/categories/{slug}/ai-configs` | промпты AI по категории |
+| PUT/DELETE | `/categories/{slug}/ai-configs/{id}` | |
+| PUT | `/categories/{slug}/active-ai-config` | активный конфиг (`409` при Авто AI) |
 | POST | `/ingest` | multipart: `file` (CSV), `category_slug` **or** `category_title` |
 | GET | `/ingest/jobs` | |
 | GET | `/ingest/jobs/{id}` | `{ job, items }` |
@@ -71,6 +78,10 @@ If ЕИС is unreachable or the number is not an EIS notice, the item ends as `u
 | GET | `/tenders/{id}/events` | change history |
 | GET/PUT | `/tenders/{id}/assessment` | `{ summary, score, details }` |
 | POST | `/tenders/{id}/analyze` | AI через analizator; body `{ checklist_id? }` |
+| GET | `/workers` | ingest / auto_ai / capacity |
+| PUT | `/workers/auto-ai` | `{ enabled: true }` |
+| POST | `/workers/ingest/pause`, `/resume`, `/stop` | управление сбором |
+| POST | `/workers/analyze/stop` | остановить AI |
 | GET/POST/PATCH/DELETE | `/customers`, `/customers/{id}` | |
 | GET | `/customers/{id}/courts` | stub `[]` |
 | GET | `/customers/{id}/rnp` | stub `[]` |

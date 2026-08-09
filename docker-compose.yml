@@ -137,6 +137,16 @@ services:
     volumes:
       - analizator_data:/data/tenders
 
+swagger-ui:
+    profiles: ["swagger"]
+    image: swaggerapi/swagger-ui
+    ports:
+      - "8081:8080"
+    environment:
+      SWAGGER_JSON: /specs/openapi.yaml
+    volumes:
+      - ./contracts/openapi:/specs:ro
+
 volumes:
   pgdata:
   analizator_data:
