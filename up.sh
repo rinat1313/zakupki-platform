@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Единая точка запуска всей платформы.
 # Пользователю достаточно: ./up.sh
+# После обновления в git: ./up.sh --ai --rebuild
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -24,6 +25,7 @@ MODE="default"
 NO_BUILD=0
 FROM_SOURCE=0
 NO_SYNC=0
+REBUILD=0
 
 usage() {
   cat <<'USAGE'
@@ -33,6 +35,8 @@ Usage:
   ./up.sh              поднять весь стек (собрать Go → образы → контейнеры)
   ./up.sh --ai         + analizator (LM Studio на хосте :1234)
   ./up.sh --full       + redis + kafka + ai
+  ./up.sh --rebuild    git pull + siblings + down + образы без кэша + up
+  ./up.sh --ai --rebuild  то же, со стеком AI (после обновления в git)
   ./up.sh --down       остановить всё
   ./up.sh --logs       логи
   ./up.sh --health     проверка health
@@ -42,6 +46,7 @@ Usage:
 
 Одного скрипта достаточно — сервисы и их Dockerfile поднимаются сами.
 Siblings всегда берутся с ветки main (SIBLING_BRANCH), если не указан --no-sync.
+После обновления репозиториев в git: ./up.sh --ai --rebuild
 USAGE
 }
 
@@ -52,6 +57,7 @@ while [[ $# -gt 0 ]]; do
     --down) MODE=down ;;
     --logs) MODE=logs ;;
     --health) MODE=health ;;
+    --rebuild) REBUILD=1 ;;
     --no-build) NO_BUILD=1 ;;
     --from-source) FROM_SOURCE=1 ;;
     --no-sync) NO_SYNC=1 ;;
@@ -61,7 +67,50 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+if [[ $REBUILD -eq 1 ]]; then
+  case "$MODE" in
+    down|logs|health)
+      echo "ERROR: --rebuild нельзя вместе с --$MODE" >&2
+      exit 1
+      ;;
+  esac
+  if [[ $NO_BUILD -eq 1 ]]; then
+    echo "WARN: --no-build проигнорирован из-за --rebuild"
+    NO_BUILD=0
+  fi
+fi
+
 PARENT="$(cd "$ROOT/.." && pwd)"
+
+# --rebuild: сначала сам platform, потом siblings (clone-siblings.sh уже новый).
+pull_platform() {
+  echo "→ обновляю zakupki-platform…"
+  if [[ -n "$(git status --porcelain)" ]]; then
+    echo "WARN: platform: есть локальные изменения — git pull пропущен"
+    echo "      сейчас: $(git rev-parse --abbrev-ref HEAD) @ $(git rev-parse --short HEAD)"
+    return 0
+  fi
+  local branch
+  branch="$(git rev-parse --abbrev-ref HEAD)"
+  if [[ "$branch" == "HEAD" ]]; then
+    echo "WARN: detached HEAD — git pull пропущен @ $(git rev-parse --short HEAD)"
+    return 0
+  fi
+  if ! git fetch origin "$branch"; then
+    echo "WARN: git fetch origin $branch не удался — pull пропущен"
+    return 0
+  fi
+  if ! git show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+    echo "WARN: нет origin/$branch — git pull пропущен"
+    return 0
+  fi
+  git pull --ff-only origin "$branch"
+  echo "OK  platform @ $(git rev-parse --short HEAD) (origin/$branch)"
+}
+
+if [[ $REBUILD -eq 1 ]]; then
+  pull_platform
+fi
 
 # Политика: перед сборкой siblings = origin/main (финальная ветка сервисов).
 if [[ "$MODE" != "down" && "$MODE" != "logs" && "$MODE" != "health" ]]; then
@@ -164,6 +213,14 @@ compose() {
   "${COMPOSE[@]}" "${COMPOSE_FILES[@]}" "$@"
 }
 
+# Как ./up.sh --down: все профили, чтобы не оставить старый analizator/search.
+stop_all() {
+  echo "→ останавливаю контейнеры…"
+  local down_files=(-f docker-compose.yml -f docker-compose.search.yml)
+  "${COMPOSE[@]}" "${down_files[@]}" --profile ai --profile redis --profile kafka down
+  echo "stopped"
+}
+
 # Архитектура Linux-контейнеров Docker (не хоста macOS!).
 docker_go_arch() {
   local arch
@@ -235,9 +292,7 @@ prep_bins() {
 
 case "$MODE" in
   down)
-    down_files=(-f docker-compose.yml -f docker-compose.search.yml)
-    "${COMPOSE[@]}" "${down_files[@]}" --profile ai --profile redis --profile kafka down
-    echo "stopped"
+    stop_all
     exit 0
     ;;
   logs)
@@ -266,12 +321,26 @@ profiles=()
 [[ "$MODE" == "ai" ]] && profiles+=(--profile ai)
 [[ "$MODE" == "full" ]] && profiles+=(--profile ai --profile redis --profile kafka)
 
+if [[ $REBUILD -eq 1 ]]; then
+  stop_all
+fi
+
 if [[ $NO_BUILD -eq 0 && $FROM_SOURCE -eq 0 ]]; then
   prep_bins
 fi
 
 up_args=(up -d --remove-orphans)
-[[ $NO_BUILD -eq 0 ]] && up_args+=(--build)
+if [[ $REBUILD -eq 1 ]]; then
+  echo "→ docker compose build --no-cache (конфиги analizator копируются в образ)…"
+  if [[ ${#profiles[@]} -gt 0 ]]; then
+    compose "${profiles[@]}" build --no-cache
+  else
+    compose build --no-cache
+  fi
+  up_args+=(--force-recreate)
+elif [[ $NO_BUILD -eq 0 ]]; then
+  up_args+=(--build)
+fi
 
 # БД search на уже существующем volume init-скрипт не пересоздаст — гарантируем до старта search.
 ensure_search_db() {
@@ -346,4 +415,5 @@ if [[ "$MODE" == "ai" || "$MODE" == "full" ]]; then
 fi
 echo
 echo "Остановить: ./up.sh --down"
+echo "После git:  ./up.sh --ai --rebuild"
 echo "Логи:       ./up.sh --logs"

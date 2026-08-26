@@ -1,4 +1,4 @@
-.PHONY: up up-ai up-full down logs health clone-siblings sync-siblings swagger
+.PHONY: up up-ai up-full down logs health clone-siblings sync-siblings swagger rebuild rebuild-ai rebuild-full
 
 up:
 	./up.sh
@@ -8,6 +8,16 @@ up-ai:
 
 up-full:
 	./up.sh --full
+
+# После обновления в git: pull platform + siblings main, down, образы --no-cache, up.
+rebuild:
+	./up.sh --rebuild
+
+rebuild-ai:
+	./up.sh --ai --rebuild
+
+rebuild-full:
+	./up.sh --full --rebuild
 
 down:
 	./up.sh --down
