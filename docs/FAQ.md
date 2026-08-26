@@ -7,11 +7,11 @@
 
 ```bash
 cd zakupki-platform
-git pull origin main
-(cd ../zakupki-parser && git pull origin main)
-./up.sh --down
-./up.sh
+./up.sh --rebuild          # без AI
+./up.sh --ai --rebuild     # со стеком analizator
 ```
+
+`--rebuild` делает `git pull` platform, sync siblings на `main`, `down`, сборку образов без кэша и `up`.
 
 Затем в UI откройте закупку → **«Обновить карточку»** (старые документы уже сохранены как unprocessed и сами не переконвертируются).
 
@@ -42,13 +42,14 @@ analizator_zakupok/Dockerfile*       # ENV по умолчанию в образ
 
 Не задавайте `LM_STUDIO_*` / `PAGE_CHARS` / `DOSE_*` в `zakupki-platform/.env` «на всякий случай» — compose их больше не форсит, а старый `export` в shell может всё ещё попасть в контейнер, если вы сами пробросите переменную.
 
-### 3. Перезапуск стека с AI
+### 3. Перезапуск стека с AI (в т.ч. после обновления git)
 
 ```bash
 cd /path/to/zakupki-platform
-./up.sh --down
-./up.sh --ai
+./up.sh --ai --rebuild
 ```
+
+`--rebuild` не трогает `LM_STUDIO_*`. Если в `analizator_zakupok` есть незакоммиченные правки yaml — sibling sync пропускается; чистое дерево откатывается на `origin/main`. Локальные IP сохранить: `./up.sh --ai --rebuild --no-sync`.
 
 ### 4. Проверка
 

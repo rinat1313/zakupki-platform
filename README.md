@@ -19,12 +19,21 @@ make sync-siblings
 ```
 
 ```bash
-./up.sh --ai        # + AI-анализ (LM Studio на хосте :1234)
-./up.sh --down      # остановить
-./up.sh --logs      # логи
-./up.sh --health    # проверка
-./up.sh --no-sync   # не трогать siblings (если сознательно на другой ветке)
+./up.sh --ai           # + AI-анализ (LM Studio на хосте :1234)
+./up.sh --ai --rebuild # git pull + siblings main + образы без кэша + up с AI
+./up.sh --down         # остановить
+./up.sh --logs         # логи
+./up.sh --health       # проверка
+./up.sh --no-sync      # не трогать siblings (если сознательно на другой ветке)
 ```
+
+После того как в git обновились platform / core / parser / analizator:
+
+```bash
+make rebuild-ai
+```
+
+`zakupki-platform` не перезаписывает IP LM Studio: адреса остаются в `analizator_zakupok/configs/lm_studio.yaml` (в Docker loopback сам сервис подменяет на `host.docker.internal`).
 
 - UI: http://localhost:3000
 - Core: http://localhost:8080/api/v1/health

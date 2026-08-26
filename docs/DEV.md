@@ -65,9 +65,16 @@ make health
 С AI:
 
 ```bash
-export LM_STUDIO_MODEL=<id>
 make up-ai
 ```
+
+После обновления репозиториев в git — полная пересборка образов (без Docker-кэша), чтобы в контейнер попали новые бинарники и `configs/` analizator:
+
+```bash
+make rebuild-ai
+```
+
+То же самое: `./up.sh --ai --rebuild`. Не форсит `LM_STUDIO_*`; IP остаются в `analizator_zakupok`.
 
 ## Запуск одной командой
 
@@ -83,6 +90,8 @@ cd zakupki-platform
 4. собирает Docker-образы,
 5. поднимает все контейнеры,
 6. проверяет health.
+
+`--rebuild` дополнительно: `git pull` platform, `down`, `docker compose build --no-cache`, `up --force-recreate`.
 
 Остановить: `./up.sh --down`.
 
