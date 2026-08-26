@@ -1,0 +1,10 @@
+---
+alwaysApply: true
+---
+
+Платформа — оркестратор, не один сервис. Карта: `docs/ARCHITECTURE.md`.
+
+- HTTP JSON между сервисами. Kafka/Redis не подключать «заодно».
+- Новая площадка → адаптер в `zakupki-parser`. Новый канал UI → `zakupki-gateway`. Источник заказчика → `zakupki-customer`. Вид AI → чек-лист `analizator_zakupok`.
+- Миграции PG только в `zakupki-platform/migrations`. Сборка `./up.sh` всегда siblings с `origin/main`.
+- `.cursor/` этого репо действует, когда workspace — platform (или Cloud Environment со всеми siblings).
